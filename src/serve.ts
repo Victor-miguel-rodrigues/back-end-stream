@@ -1,17 +1,48 @@
 import express from "express";
-import cors from "cors";
 import "dotenv/config";
+import { corsMiddleware, corsLogger } from "./middlewares/cors";
 import router from "./routing/routing";
 
 const app = express();
 
-// CORS
-app.use(cors());
+// ============================================
+// CORS - DEVE VIR ANTES DE QUALQUER ROTA
+// ============================================
+app.use(corsLogger);  // Log das requisições CORS
+app.use(corsMiddleware); // Middleware CORS configurado
 
-// JSON Parser
+// ============================================
+// PARSERS
+// ============================================
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Rotas
+// ============================================
+// ROTAS
+// ============================================
 app.use(router);
+
+// ============================================
+// HEALTH CHECK (público)
+// ============================================
+app.get("/health", (req, res) => {
+    res.json({
+        status: "online",
+        timestamp: new Date().toISOString(),
+        versao: "1.0.0",
+        ambiente: process.env.NODE_ENV || "development"
+    });
+});
+
+// ============================================
+// TRATAMENTO DE ERRO 404
+// ============================================
+app.use((req, res) => {
+    res.status(404).json({
+        status: false,
+        message: "Rota não encontrada",
+        path: req.url
+    });
+});
 
 export default app;
