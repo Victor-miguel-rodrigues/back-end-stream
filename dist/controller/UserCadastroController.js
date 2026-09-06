@@ -262,8 +262,8 @@ class UserCadastroController {
                 });
             }
             const sessaoResult = await (0, connection_1.query)(`SELECT usuario_id, perfil_id, ip 
-                 FROM sessoes 
-                 WHERE token = $1 AND ativo = TRUE`, [token]);
+             FROM sessoes 
+             WHERE token = $1 AND ativo = TRUE`, [token]);
             if (sessaoResult.rows.length === 0) {
                 return res.status(404).json({
                     status: false,
@@ -272,19 +272,20 @@ class UserCadastroController {
             }
             const sessao = sessaoResult.rows[0];
             await (0, connection_1.transaction)(async (client) => {
+                // Desativar sessão
                 await client.query(`UPDATE sessoes 
-                     SET ativo = FALSE 
-                     WHERE token = $1`, [token]);
+                 SET ativo = FALSE 
+                 WHERE token = $1`, [token]);
+                // ✅ CORRIGIDO: Removido ORDER BY do UPDATE
                 await client.query(`UPDATE historico_login 
-                     SET data_logout = NOW(),
-                         duracao_minutos = EXTRACT(EPOCH FROM (NOW() - data_login)) / 60
-                     WHERE usuario_id = $1 
-                     AND perfil_id = $2 
-                     AND data_logout IS NULL 
-                     ORDER BY data_login DESC 
-                     LIMIT 1`, [sessao.usuario_id, sessao.perfil_id]);
+                 SET data_logout = NOW(),
+                     duracao_minutos = EXTRACT(EPOCH FROM (NOW() - data_login)) / 60
+                 WHERE usuario_id = $1 
+                 AND perfil_id = $2 
+                 AND data_logout IS NULL`, [sessao.usuario_id, sessao.perfil_id]);
+                // Registrar log
                 await client.query(`INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
-                     VALUES ($1, $2, $3, $4, $5)`, [sessao.usuario_id, sessao.perfil_id, "logout", "Logout realizado", sessao.ip]);
+                 VALUES ($1, $2, $3, $4, $5)`, [sessao.usuario_id, sessao.perfil_id, "logout", "Logout realizado", sessao.ip]);
             });
             return res.json({
                 status: true,
