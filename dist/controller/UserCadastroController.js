@@ -1,15 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserCadastroController = void 0;
-const connection_1 = require("../database/connection"); // Removeu 'pool'
+const connection_1 = require("../database/connection");
 const crypto_1 = require("../utils/crypto");
 // ============================================
 // CONTROLLER UNIFICADO
 // ============================================
 class UserCadastroController {
-    // ============================================
-    // LISTAR (TESTE)
-    // ============================================
     listar(_req, res) {
         return res.json({
             mensage: "Funcionado direitinho",
@@ -23,6 +20,7 @@ class UserCadastroController {
     async receber(req, res) {
         try {
             const { nome_usuario, email, senha } = req.body;
+            console.log("📝 CADASTRO - Recebido:", { nome_usuario, email, senha: "***" });
             if (!nome_usuario || !email || !senha) {
                 return res.status(400).json({
                     status: false,
@@ -50,10 +48,12 @@ class UserCadastroController {
                 });
             }
             const senhaHash = (0, crypto_1.sha256)(senha);
+            console.log("🔐 Hash da senha:", senhaHash.substring(0, 20) + "...");
             const resultado = await (0, connection_1.transaction)(async (client) => {
                 const insertResult = await client.query(`INSERT INTO usuarios (nome_usuario, email, senha_hash) 
                      VALUES ($1, $2, $3) 
                      RETURNING id, nome_usuario, email, data_cadastro`, [nome_usuario.trim(), email.trim(), senhaHash]);
+                console.log("✅ Usuário criado:", insertResult.rows[0]);
                 await client.query(`INSERT INTO logs_sistema (usuario_id, acao, descricao, ip)
                      VALUES ($1, $2, $3, $4)`, [insertResult.rows[0].id, "cadastro", "Novo usuário cadastrado", req.ip || "0.0.0.0"]);
                 return insertResult.rows[0];
@@ -70,7 +70,7 @@ class UserCadastroController {
             });
         }
         catch (error) {
-            console.error("Erro ao cadastrar usuário:", error);
+            console.error("❌ Erro ao cadastrar usuário:", error);
             return res.status(500).json({
                 status: false,
                 message: "Erro ao cadastrar usuário"
@@ -78,36 +78,57 @@ class UserCadastroController {
         }
     }
     // ============================================
-    // LOGIN (COM TOKEN E SESSÃO)
+    // LOGIN (COM TOKEN E SESSÃO) - COM LOGS
     // ============================================
     async logar(req, res) {
         try {
             const { email, senha } = req.body;
             const ip = req.ip || req.connection?.remoteAddress || "0.0.0.0";
             const userAgent = req.headers["user-agent"] || "";
+            console.log("========================================");
+            console.log("🔍 LOGIN - Iniciando");
+            console.log(`📧 Email: ${email}`);
+            console.log(`🔑 Senha: ${senha ? "***" : "vazia"}`);
+            console.log(`🌐 IP: ${ip}`);
+            console.log("========================================");
             if (!email || !senha) {
+                console.log("❌ Email ou senha vazios");
                 return res.status(400).json({
                     status: false,
                     message: "Email e senha são obrigatórios"
                 });
             }
+            // Buscar usuário
             const resultado = await (0, connection_1.query)(`SELECT id, nome_usuario, email, senha_hash, ativo 
                  FROM usuarios 
-                 WHERE email = $1`, [email]);
+                 WHERE email = $1`, [email.trim()]);
+            console.log(`🔍 Usuários encontrados: ${resultado.rows.length}`);
             if (resultado.rows.length === 0) {
+                console.log("❌ Usuário não encontrado");
                 return res.status(401).json({
                     status: false,
                     message: "Email ou senha inválidos"
                 });
             }
             const usuario = resultado.rows[0];
+            console.log(`🔍 Usuário ID: ${usuario.id}`);
+            console.log(`🔍 Nome: ${usuario.nome_usuario}`);
+            console.log(`🔍 Ativo: ${usuario.ativo}`);
+            console.log(`🔍 Senha hash (primeiros 20): ${usuario.senha_hash?.substring(0, 20)}...`);
             if (!usuario.ativo) {
+                console.log("❌ Usuário desativado");
                 return res.status(403).json({
                     status: false,
                     message: "Usuário desativado"
                 });
             }
+            // Verificar senha
+            const senhaDigitadaHash = (0, crypto_1.sha256)(senha);
+            console.log(`🔍 Hash digitado: ${senhaDigitadaHash.substring(0, 20)}...`);
+            console.log(`🔍 Hash banco:    ${usuario.senha_hash?.substring(0, 20)}...`);
+            console.log(`🔍 Comparação: ${senhaDigitadaHash === usuario.senha_hash ? '✅ IGUAIS' : '❌ DIFERENTES'}`);
             if (!(0, crypto_1.compararSenha)(senha, usuario.senha_hash)) {
+                console.log("❌ Senha incorreta");
                 await (0, connection_1.query)(`INSERT INTO logs_sistema (usuario_id, acao, descricao, ip) 
                      VALUES ($1, $2, $3, $4)`, [usuario.id, "login_falha", "Tentativa de login com senha incorreta", ip]);
                 return res.status(401).json({
@@ -115,6 +136,8 @@ class UserCadastroController {
                     message: "Email ou senha inválidos"
                 });
             }
+            console.log("✅ Senha correta!");
+            // Buscar perfil do usuário
             const perfilResult = await (0, connection_1.query)(`SELECT up.perfil_id, p.nome, p.limite_usuarios_logados
                  FROM usuario_perfil up
                  JOIN perfis_acesso p ON up.perfil_id = p.id
@@ -125,25 +148,34 @@ class UserCadastroController {
                  LIMIT 1`, [usuario.id]);
             let perfilNome = "Sem perfil";
             let perfilId = null;
+            console.log(`🔍 Perfis encontrados: ${perfilResult.rows.length}`);
             if (perfilResult.rows.length > 0) {
                 const perfil = perfilResult.rows[0];
                 perfilNome = perfil.nome;
                 perfilId = perfil.perfil_id;
+                console.log(`🔍 Perfil: ${perfilNome}`);
                 const vagasResult = await (0, connection_1.query)(`SELECT COUNT(DISTINCT s.usuario_id) as logados
                      FROM sessoes s
                      WHERE s.perfil_id = $1 
                      AND s.ativo = TRUE 
                      AND s.data_expiracao > NOW()`, [perfil.perfil_id]);
                 const logados = parseInt(vagasResult.rows[0].logados);
+                console.log(`🔍 Logados no perfil: ${logados}/${perfil.limite_usuarios_logados}`);
                 if (logados >= perfil.limite_usuarios_logados) {
+                    console.log("❌ Perfil lotado");
                     return res.status(429).json({
                         status: false,
                         message: `Perfil "${perfil.nome}" está lotado. Limite: ${perfil.limite_usuarios_logados} usuário(s) logado(s) simultaneamente.`
                     });
                 }
             }
+            else {
+                console.log("⚠️ Usuário sem perfil ativo - continuando sem perfil");
+            }
+            // Gerar token
             const token = (0, crypto_1.gerarToken)();
             const expiracao = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+            console.log(`🔑 Token gerado: ${token.substring(0, 20)}...`);
             await (0, connection_1.transaction)(async (client) => {
                 await client.query(`UPDATE sessoes 
                      SET ativo = FALSE 
@@ -160,6 +192,8 @@ class UserCadastroController {
                 await client.query(`INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                      VALUES ($1, $2, $3, $4, $5)`, [usuario.id, perfilId, "login", "Login realizado com sucesso", ip]);
             });
+            console.log("✅ Login realizado com sucesso!");
+            console.log("========================================");
             return res.status(200).json({
                 status: true,
                 message: "Login realizado com sucesso",
@@ -176,7 +210,7 @@ class UserCadastroController {
             });
         }
         catch (error) {
-            console.error("Erro no login:", error);
+            console.error("❌ Erro no login:", error);
             return res.status(500).json({
                 status: false,
                 message: "Erro interno do servidor"
