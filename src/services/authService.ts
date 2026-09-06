@@ -4,7 +4,7 @@ import { sha256, gerarToken, compararSenha } from "../utils/crypto";
 import { AppError, LoginResponse, PodeLogarResponse, SessaoComUsuario } from "../types";
 
 // ============================================
-// FUNÇÕES DE VALIDAÇÃO (usando suas validações)
+// FUNÇÕES DE VALIDAÇÃO
 // ============================================
 const validarEmail = (email: string): boolean => {
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -12,7 +12,6 @@ const validarEmail = (email: string): boolean => {
 };
 
 const validarSenha = (senha: string): boolean => {
-    // Verificar se senha existe, é string e tem pelo menos 6 caracteres
     return typeof senha === 'string' && senha.length >= 6;
 };
 
@@ -26,7 +25,6 @@ export class AuthService {
         ip: string,
         userAgent: string
     ): Promise<LoginResponse["dados"]> {
-        // Validar entrada
         if (!email || !senha) {
             throw new AppError("Email e senha são obrigatórios", 400);
         }
@@ -52,14 +50,12 @@ export class AuthService {
 
             const usuario = usuarioResult.rows[0];
 
-            // 2. Verificar se usuário está ativo
             if (!usuario.ativo) {
                 throw new AppError("Usuário desativado", 403);
             }
 
-            // 3. Verificar senha
+            // 2. Verificar senha
             if (!compararSenha(senha, usuario.senha_hash)) {
-                // Registrar tentativa falha
                 await client.query(
                     `INSERT INTO logs_sistema (usuario_id, acao, descricao, ip) 
                      VALUES ($1, $2, $3, $4)`,
@@ -68,7 +64,7 @@ export class AuthService {
                 throw new AppError("Senha incorreta", 401);
             }
 
-            // 4. Buscar perfil do usuário
+            // 3. Buscar perfil do usuário
             const perfilResult = await client.query(
                 `SELECT up.perfil_id, p.nome, p.limite_usuarios_logados, up.data_validade
                  FROM usuario_perfil up
@@ -87,7 +83,7 @@ export class AuthService {
 
             const perfil = perfilResult.rows[0];
 
-            // 5. Verificar se perfil tem vaga
+            // 4. Verificar se perfil tem vaga
             const vagasResult = await client.query(
                 `SELECT COUNT(DISTINCT s.usuario_id) as logados
                  FROM sessoes s
@@ -105,11 +101,11 @@ export class AuthService {
                 );
             }
 
-            // 6. Gerar token
+            // 5. Gerar token
             const token = gerarToken();
             const expiracao = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-            // 7. Desativar sessões antigas do usuário
+            // 6. Desativar sessões antigas do usuário
             await client.query(
                 `UPDATE sessoes 
                  SET ativo = FALSE 
@@ -117,29 +113,29 @@ export class AuthService {
                 [usuario.id]
             );
 
-            // 8. Criar nova sessão
+            // 7. Criar nova sessão
             await client.query(
                 `INSERT INTO sessoes (usuario_id, perfil_id, token, data_expiracao, ip, user_agent)
                  VALUES ($1, $2, $3, $4, $5, $6)`,
                 [usuario.id, perfil.perfil_id, token, expiracao, ip, userAgent]
             );
 
-            // 9. Registrar histórico de login
+            // 8. Registrar histórico de login
             await client.query(
                 `INSERT INTO historico_login (usuario_id, perfil_id, ip, user_agent)
                  VALUES ($1, $2, $3, $4)`,
                 [usuario.id, perfil.perfil_id, ip, userAgent]
             );
 
-            // 10. Atualizar último login do usuário
+            // 9. ✅ CORRIGIDO: Atualizar apenas ultimo_login
             await client.query(
                 `UPDATE usuarios 
-                 SET ultimo_login = NOW(), ultimo_ip = $1 
-                 WHERE id = $2`,
-                [ip, usuario.id]
+                 SET ultimo_login = NOW()
+                 WHERE id = $1`,
+                [usuario.id]
             );
 
-            // 11. Registrar log de sucesso
+            // 10. Registrar log de sucesso
             await client.query(
                 `INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                  VALUES ($1, $2, $3, $4, $5)`,
@@ -321,7 +317,6 @@ export class AuthService {
         email: string,
         senha: string
     ): Promise<{ id: number; nome_usuario: string; email: string }> {
-        // Validar entrada
         if (!nome_usuario || !email || !senha) {
             throw new AppError("Nome, email e senha são obrigatórios", 400);
         }
@@ -333,7 +328,6 @@ export class AuthService {
         }
 
         return await transaction(async (client: PoolClient) => {
-            // Verificar se email já existe
             const existeResult = await client.query(
                 "SELECT id FROM usuarios WHERE email = $1",
                 [email]
@@ -343,10 +337,8 @@ export class AuthService {
                 throw new AppError("Email já cadastrado", 409);
             }
 
-            // Hash da senha
             const senhaHash = sha256(senha);
 
-            // Criar usuário
             const result = await client.query(
                 `INSERT INTO usuarios (nome_usuario, email, senha_hash) 
                  VALUES ($1, $2, $3) 
@@ -356,7 +348,6 @@ export class AuthService {
 
             const usuario = result.rows[0];
 
-            // Registrar log
             await client.query(
                 `INSERT INTO logs_sistema (usuario_id, acao, descricao, ip)
                  VALUES ($1, $2, $3, $4)`,

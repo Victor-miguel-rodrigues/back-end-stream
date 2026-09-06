@@ -1,12 +1,25 @@
 import crypto from 'crypto';
 
+// Função para limpar caracteres invisíveis
+const limparTexto = (texto: string): string => {
+    if (!texto) return '';
+    // Remove caracteres invisíveis: espaços, quebras de linha, tabs, etc.
+    return texto.replace(/[\s\u200B-\u200D\uFEFF\xA0]/g, '').trim();
+};
+
 export const sha256 = (texto: string): string => {
-    console.log(`🔐 sha256 - Entrada: "${texto}"`);
-    console.log(`🔐 sha256 - Tipo: ${typeof texto}`);
-    console.log(`🔐 sha256 - Tamanho: ${texto?.length}`);
-    console.log(`🔐 sha256 - Caracteres:`, [...texto || ''].map(c => `'${c}'`).join(', '));
+    // 🔴 LIMPAR O TEXTO ANTES DE GERAR O HASH
+    const textoLimpo = limparTexto(texto);
     
-    const hash = crypto.createHash('sha256').update(texto).digest('hex');
+    console.log(`🔐 sha256 - Entrada original: "${texto}"`);
+    console.log(`🔐 sha256 - Entrada limpa:   "${textoLimpo}"`);
+    console.log(`🔐 sha256 - Tipo: ${typeof texto}`);
+    console.log(`🔐 sha256 - Tamanho original: ${texto?.length}`);
+    console.log(`🔐 sha256 - Tamanho limpo: ${textoLimpo.length}`);
+    console.log(`🔐 sha256 - Caracteres originais:`, [...texto || ''].map(c => `'${c}'`).join(', '));
+    console.log(`🔐 sha256 - Caracteres limpos:`, [...textoLimpo || ''].map(c => `'${c}'`).join(', '));
+    
+    const hash = crypto.createHash('sha256').update(textoLimpo).digest('hex');
     console.log(`🔐 sha256 - Hash gerado: "${hash}"`);
     
     return hash;
@@ -21,11 +34,15 @@ export const gerarCodigoVerificacao = (): string => {
 };
 
 export const compararSenha = (senhaDigitada: string, senhaHash: string): boolean => {
+    // 🔴 LIMPAR A SENHA ANTES DE COMPARAR
+    const senhaLimpa = limparTexto(senhaDigitada);
+    
     console.log("🔍 COMPARAR SENHA:");
-    console.log(`  Senha digitada: "${senhaDigitada}"`);
+    console.log(`  Senha original: "${senhaDigitada}"`);
+    console.log(`  Senha limpa:    "${senhaLimpa}"`);
     console.log(`  Hash banco:     "${senhaHash}"`);
     
-    const hash = sha256(senhaDigitada);
+    const hash = sha256(senhaLimpa);
     console.log(`  Hash calculado: "${hash}"`);
     console.log(`  Resultado: ${hash === senhaHash ? '✅ IGUAIS' : '❌ DIFERENTES'}`);
     
