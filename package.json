@@ -1,11 +1,11 @@
 {
   "name": "back-end-stream",
   "version": "1.0.0",
-  "main": "src/server.ts",
+  "main": "src/serve.ts",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/serve.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/serve.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
