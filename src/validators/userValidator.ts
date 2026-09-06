@@ -382,7 +382,7 @@ export function validarToken(
 }
 
 // ============================================
-// VALIDAR ID (para parâmetros de URL)
+// VALIDAR ID (para parâmetros de URL) - CORRIGIDO
 // ============================================
 export function validarId(
     req: Request,
@@ -391,14 +391,17 @@ export function validarId(
 ) {
     const { id } = req.params;
 
-    if (!id) {
+    // ✅ CORRIGIDO: tratar quando id é array
+    const idStr = Array.isArray(id) ? id[0] : id;
+
+    if (!idStr || idStr.trim() === "") {
         return res.status(400).json({
             status: false,
             message: "ID é obrigatório"
         });
     }
 
-    const idNumero = parseInt('id');
+    const idNumero = parseInt(idStr, 10);
     if (isNaN(idNumero) || idNumero <= 0) {
         return res.status(400).json({
             status: false,
@@ -411,7 +414,7 @@ export function validarId(
 }
 
 // ============================================
-// VALIDAR EMAIL
+// VALIDAR EMAIL (PARÂMETRO) - CORRIGIDO
 // ============================================
 export function validarEmailParam(
     req: Request,
@@ -420,7 +423,10 @@ export function validarEmailParam(
 ) {
     const { email } = req.params;
 
-    if (!email) {
+    // ✅ CORRIGIDO: tratar quando email é array
+    const emailStr = Array.isArray(email) ? email[0] : email;
+
+    if (!emailStr || emailStr.trim() === "") {
         return res.status(400).json({
             status: false,
             message: "Email é obrigatório"
@@ -428,18 +434,19 @@ export function validarEmailParam(
     }
 
     const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailValido.test('email')) {
+    if (!emailValido.test(emailStr)) {
         return res.status(400).json({
             status: false,
             message: "Email inválido"
         });
     }
 
+    req.params.email = emailStr;
     next();
 }
 
 // ============================================
-// VALIDAR PAGINAÇÃO
+// VALIDAR PAGINAÇÃO - CORRIGIDO
 // ============================================
 export function validarPaginacao(
     req: Request,
@@ -448,8 +455,12 @@ export function validarPaginacao(
 ) {
     const { page = 1, limit = 10 } = req.query;
 
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
+    // ✅ CORRIGIDO: tratar quando são arrays
+    const pageStr = Array.isArray(page) ? page[0] : page;
+    const limitStr = Array.isArray(limit) ? limit[0] : limit;
+
+    const pageNum = parseInt(pageStr as string, 10);
+    const limitNum = parseInt(limitStr as string, 10);
 
     if (isNaN(pageNum) || pageNum < 1) {
         return res.status(400).json({
