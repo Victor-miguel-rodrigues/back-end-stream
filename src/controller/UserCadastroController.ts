@@ -22,7 +22,12 @@ export class UserCadastroController {
         try {
             const { nome_usuario, email, senha } = req.body;
 
-            console.log("📝 CADASTRO - Recebido:", { nome_usuario, email, senha: "***" });
+            console.log("========================================");
+            console.log("📝 CADASTRO - Recebido:");
+            console.log(`  Nome: "${nome_usuario}"`);
+            console.log(`  Email: "${email}"`);
+            console.log(`  Senha: "***"`);
+            console.log("========================================");
 
             if (!nome_usuario || !email || !senha) {
                 return res.status(400).json({
@@ -59,7 +64,7 @@ export class UserCadastroController {
             }
 
             const senhaHash = sha256(senha);
-            console.log("🔐 Hash da senha:", senhaHash.substring(0, 20) + "...");
+            console.log(`🔐 Hash gerado para cadastro: ${senhaHash}`);
 
             const resultado = await transaction(async (client: PoolClient) => {
                 const insertResult = await client.query(
@@ -69,7 +74,12 @@ export class UserCadastroController {
                     [nome_usuario.trim(), email.trim(), senhaHash]
                 );
 
-                console.log("✅ Usuário criado:", insertResult.rows[0]);
+                console.log("✅ Usuário criado:", {
+                    id: insertResult.rows[0].id,
+                    nome: insertResult.rows[0].nome_usuario,
+                    email: insertResult.rows[0].email,
+                    senha_hash: senhaHash.substring(0, 20) + "..."
+                });
 
                 await client.query(
                     `INSERT INTO logs_sistema (usuario_id, acao, descricao, ip)
@@ -101,7 +111,7 @@ export class UserCadastroController {
     }
 
     // ============================================
-    // LOGIN (COM TOKEN E SESSÃO) - COM LOGS
+    // LOGIN (COM TOKEN E SESSÃO) - COM LOGS DETALHADOS
     // ============================================
     async logar(req: Request, res: Response) {
         try {
@@ -111,8 +121,10 @@ export class UserCadastroController {
 
             console.log("========================================");
             console.log("🔍 LOGIN - Iniciando");
-            console.log(`📧 Email: ${email}`);
-            console.log(`🔑 Senha: ${senha ? "***" : "vazia"}`);
+            console.log(`📧 Email RECEBIDO: "${email}"`);
+            console.log(`🔑 Senha RECEBIDA: "${senha}"`);
+            console.log(`🔑 Tipo da senha: ${typeof senha}`);
+            console.log(`🔑 Tamanho da senha: ${senha?.length}`);
             console.log(`🌐 IP: ${ip}`);
             console.log("========================================");
 
@@ -146,7 +158,8 @@ export class UserCadastroController {
             console.log(`🔍 Usuário ID: ${usuario.id}`);
             console.log(`🔍 Nome: ${usuario.nome_usuario}`);
             console.log(`🔍 Ativo: ${usuario.ativo}`);
-            console.log(`🔍 Senha hash (primeiros 20): ${usuario.senha_hash?.substring(0, 20)}...`);
+            console.log(`🔍 Hash no BANCO: "${usuario.senha_hash}"`);
+            console.log(`🔍 Hash no BANCO (primeiros 20): ${usuario.senha_hash?.substring(0, 20)}...`);
 
             if (!usuario.ativo) {
                 console.log("❌ Usuário desativado");
@@ -156,11 +169,31 @@ export class UserCadastroController {
                 });
             }
 
-            // Verificar senha
+            // 🔴 CALCULAR O HASH DA SENHA DIGITADA
             const senhaDigitadaHash = sha256(senha);
-            console.log(`🔍 Hash digitado: ${senhaDigitadaHash.substring(0, 20)}...`);
-            console.log(`🔍 Hash banco:    ${usuario.senha_hash?.substring(0, 20)}...`);
+            console.log(`🔍 Hash CALCULADO (senha digitada): "${senhaDigitadaHash}"`);
+            console.log(`🔍 Hash CALCULADO (primeiros 20): ${senhaDigitadaHash.substring(0, 20)}...`);
+            console.log(`🔍 Hash no BANCO:               "${usuario.senha_hash}"`);
             console.log(`🔍 Comparação: ${senhaDigitadaHash === usuario.senha_hash ? '✅ IGUAIS' : '❌ DIFERENTES'}`);
+
+            // 🔴 COMPARAÇÃO CARACTERE POR CARACTERE SE FOR DIFERENTE
+            if (senhaDigitadaHash !== usuario.senha_hash) {
+                console.log("🔍 COMPARAÇÃO DETALHADA:");
+                console.log(`  Tamanho hash digitado: ${senhaDigitadaHash.length}`);
+                console.log(`  Tamanho hash banco:    ${usuario.senha_hash?.length}`);
+                
+                // Mostrar onde está a diferença
+                const minLength = Math.min(senhaDigitadaHash.length, usuario.senha_hash?.length || 0);
+                for (let i = 0; i < minLength; i++) {
+                    if (senhaDigitadaHash[i] !== usuario.senha_hash[i]) {
+                        console.log(`  ❌ Diferença na posição ${i}: '${senhaDigitadaHash[i]}' vs '${usuario.senha_hash[i]}'`);
+                        break;
+                    }
+                }
+                if (senhaDigitadaHash.length !== usuario.senha_hash?.length) {
+                    console.log(`  ❌ Tamanhos diferentes: ${senhaDigitadaHash.length} vs ${usuario.senha_hash?.length}`);
+                }
+            }
 
             if (!compararSenha(senha, usuario.senha_hash)) {
                 console.log("❌ Senha incorreta");
