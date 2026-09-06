@@ -12,7 +12,7 @@
       "dest": "dist/serve.js",
       "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       "headers": {
-        "Access-Control-Allow-Origin": "https://meu-front-rose.vercel.app",
+        "Access-Control-Allow-Origin": "https://meu-front-rose.vercel.app/",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization"
       }
