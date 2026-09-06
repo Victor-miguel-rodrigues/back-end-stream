@@ -252,18 +252,27 @@ class UserCadastroController {
     // ============================================
     // LOGOUT
     // ============================================
+    // ============================================
+    // LOGOUT - CORRIGIDO
+    // ============================================
     async logout(req, res) {
         try {
             const token = req.headers.authorization?.split(' ')[1] || req.body.token;
+            console.log("========================================");
+            console.log("🔍 LOGOUT - Iniciando");
+            console.log(`🔑 Token: ${token ? token.substring(0, 20) + "..." : "não fornecido"}`);
+            console.log("========================================");
             if (!token) {
                 return res.status(400).json({
                     status: false,
                     message: "Token não fornecido"
                 });
             }
-            const sessaoResult = await (0, connection_1.query)(`SELECT usuario_id, perfil_id, ip 
+            // Buscar sessão
+            const sessaoResult = await (0, connection_1.query)(`SELECT usuario_id, perfil_id, ip, data_criacao
              FROM sessoes 
              WHERE token = $1 AND ativo = TRUE`, [token]);
+            console.log(`🔍 Sessão encontrada: ${sessaoResult.rows.length > 0 ? '✅ SIM' : '❌ NÃO'}`);
             if (sessaoResult.rows.length === 0) {
                 return res.status(404).json({
                     status: false,
@@ -272,28 +281,33 @@ class UserCadastroController {
             }
             const sessao = sessaoResult.rows[0];
             await (0, connection_1.transaction)(async (client) => {
-                // Desativar sessão
+                // 1. Desativar sessão
+                console.log("🔍 Desativando sessão...");
                 await client.query(`UPDATE sessoes 
                  SET ativo = FALSE 
                  WHERE token = $1`, [token]);
-                // ✅ CORRIGIDO: Removido ORDER BY do UPDATE
+                // 2. ✅ CORRIGIDO: Remover ORDER BY do UPDATE
+                console.log("🔍 Atualizando histórico...");
                 await client.query(`UPDATE historico_login 
                  SET data_logout = NOW(),
                      duracao_minutos = EXTRACT(EPOCH FROM (NOW() - data_login)) / 60
                  WHERE usuario_id = $1 
                  AND perfil_id = $2 
                  AND data_logout IS NULL`, [sessao.usuario_id, sessao.perfil_id]);
-                // Registrar log
+                // 3. Registrar log
+                console.log("🔍 Registrando log...");
                 await client.query(`INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                  VALUES ($1, $2, $3, $4, $5)`, [sessao.usuario_id, sessao.perfil_id, "logout", "Logout realizado", sessao.ip]);
             });
+            console.log("✅ Logout realizado com sucesso!");
+            console.log("========================================");
             return res.json({
                 status: true,
                 message: "Logout realizado com sucesso"
             });
         }
         catch (error) {
-            console.error("Erro no logout:", error);
+            console.error("❌ Erro no logout:", error);
             return res.status(500).json({
                 status: false,
                 message: "Erro ao fazer logout"
