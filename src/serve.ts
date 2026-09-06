@@ -5,10 +5,13 @@ import router from "./routing/routing";
 
 const app = express();
 
+// CORS
 app.use(cors());
 
+// JSON Parser
 app.use(express.json());
 
+// Rotas
 app.use(router);
 
 export default app;

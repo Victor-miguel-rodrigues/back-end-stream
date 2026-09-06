@@ -1,42 +1,40 @@
 import { Router } from "express";
-import { userCadastroController } from "../controller/UserCadastroController";
+import authController from "../controller/UserCadastroController";
 import { validarUsuario, validarLogin } from "../validators/userValidator";
-import pool from "../database/connection";
+
 const router = Router();
 
-const controller = new userCadastroController();
+// ============================================
+// ROTAS PÚBLICAS
+// ============================================
 
-router.get("/", controller.listar);
-
-router.post(
-    "/cadastrar",
-    validarUsuario,
-    controller.receber
-);
-
-router.post(
-  "/login",
-   validarLogin,
-    controller.logar
-);
-
-router.get("/teste-env", (req, res) => {
-    try {
-        const url = new URL(process.env.DATABASE_URL!);
-
-        return res.json({
-            existe: true,
-            host: url.hostname,
-            port: url.port,
-            database: url.pathname
-        });
-
-    } catch (error) {
-        return res.status(500).json({
-            existe: false,
-            error: error instanceof Error ? error.message : String(error)
-        });
-    }
+// Health check
+router.get("/health", (req, res) => {
+    res.json({
+        status: "online",
+        timestamp: new Date().toISOString(),
+        versao: "1.0.0"
+    });
 });
+
+// Listar (teste)
+router.get("/listar", authController.listar);
+
+// Cadastrar usuário
+router.post("/cadastrar", validarUsuario, authController.receber);
+
+// Login
+router.post("/login", validarLogin, authController.logar);
+
+// Validar token
+router.post("/validar-token", authController.validarToken);
+router.get("/validar-token", authController.validarToken);
+
+// ============================================
+// ROTAS PROTEGIDAS (com token)
+// ============================================
+
+// Logout
+router.post("/logout", authController.logout);
 
 export default router;
