@@ -113,7 +113,7 @@ export class UserCadastroController {
     // ============================================
     // LOGIN (COM TOKEN E SESSÃO) - COM LOGS DETALHADOS
     // ============================================
-async logar(req: Request, res: Response) {
+ async logar(req: Request, res: Response) {
     try {
         const { email, senha } = req.body;
         const ip = req.ip || req.connection?.remoteAddress || "0.0.0.0";
@@ -123,8 +123,6 @@ async logar(req: Request, res: Response) {
         console.log("🔍 LOGIN - Iniciando");
         console.log(`📧 Email RECEBIDO: "${email}"`);
         console.log(`🔑 Senha RECEBIDA: "${senha}"`);
-        console.log(`🔑 Tipo da senha: ${typeof senha}`);
-        console.log(`🔑 Tamanho da senha: ${senha?.length}`);
         console.log(`🌐 IP: ${ip}`);
         console.log("========================================");
 
@@ -136,15 +134,13 @@ async logar(req: Request, res: Response) {
             });
         }
 
-        // Buscar usuário
+        // 1. Buscar usuário
         const resultado = await query(
             `SELECT id, nome_usuario, email, senha_hash, ativo 
              FROM usuarios 
              WHERE email = $1`,
             [email.trim()]
         );
-
-        console.log(`🔍 Usuários encontrados: ${resultado.rows.length}`);
 
         if (resultado.rows.length === 0) {
             console.log("❌ Usuário não encontrado");
@@ -155,11 +151,6 @@ async logar(req: Request, res: Response) {
         }
 
         const usuario = resultado.rows[0];
-        console.log(`🔍 Usuário ID: ${usuario.id}`);
-        console.log(`🔍 Nome: ${usuario.nome_usuario}`);
-        console.log(`🔍 Ativo: ${usuario.ativo}`);
-        console.log(`🔍 Hash no BANCO: "${usuario.senha_hash}"`);
-        console.log(`🔍 Hash no BANCO (primeiros 20): ${usuario.senha_hash?.substring(0, 20)}...`);
 
         if (!usuario.ativo) {
             console.log("❌ Usuário desativado");
@@ -169,11 +160,7 @@ async logar(req: Request, res: Response) {
             });
         }
 
-        // Verificar senha
-        const senhaDigitadaHash = sha256(senha);
-        console.log(`🔍 Hash CALCULADO: "${senhaDigitadaHash}"`);
-        console.log(`🔍 Comparação: ${senhaDigitadaHash === usuario.senha_hash ? '✅ IGUAIS' : '❌ DIFERENTES'}`);
-
+        // 2. Verificar senha
         if (!compararSenha(senha, usuario.senha_hash)) {
             console.log("❌ Senha incorreta");
             await query(
@@ -189,9 +176,9 @@ async logar(req: Request, res: Response) {
 
         console.log("✅ Senha correta!");
 
-        // Buscar perfil do usuário
+        // 3. Buscar perfil do usuário
         const perfilResult = await query(
-            `SELECT up.perfil_id, p.nome, p.limite_usuarios_logados
+            `SELECT up.perfil_id, p.nome
              FROM usuario_perfil up
              JOIN perfis_acesso p ON up.perfil_id = p.id
              WHERE up.usuario_id = $1 
@@ -202,75 +189,66 @@ async logar(req: Request, res: Response) {
             [usuario.id]
         );
 
-        let perfilNome = "Sem perfil";
-        let perfilId = null;
-
-        console.log(`🔍 Perfis encontrados: ${perfilResult.rows.length}`);
-
-        if (perfilResult.rows.length > 0) {
-            const perfil = perfilResult.rows[0];
-            perfilNome = perfil.nome;
-            perfilId = perfil.perfil_id;
-            console.log(`🔍 Perfil: ${perfilNome}`);
-
-            // 🔴 VERIFICAR SE É PREMIUM (opcional - se quiser bloquear gratuitos)
-            if (perfilNome !== 'Premium' && perfilNome !== 'Empresarial') {
-                console.log(`❌ Usuário com perfil "${perfilNome}" não pode logar (apenas Premium)`);
-                return res.status(403).json({
-                    status: false,
-                    message: "Apenas usuários Premium podem acessar o sistema"
-                });
-            }
-
-            // ✅ NOVO: Verifica se o USUÁRIO já tem uma sessão ativa
-            const sessaoExistente = await query(
-                `SELECT id FROM sessoes 
-                 WHERE usuario_id = $1 
-                 AND ativo = TRUE 
-                 AND data_expiracao > NOW()`,
-                [usuario.id]
-            );
-
-            // Se já tiver sessão ativa, desativa (permite apenas 1 por usuário)
-            if (sessaoExistente.rows.length > 0) {
-                console.log(`⚠️ Usuário já tem sessão ativa, substituindo...`);
-                await query(
-                    `UPDATE sessoes SET ativo = FALSE WHERE id = $1`,
-                    [sessaoExistente.rows[0].id]
-                );
-            }
-        } else {
-            console.log("⚠️ Usuário sem perfil ativo - continuando sem perfil");
+        if (perfilResult.rows.length === 0) {
+            return res.status(403).json({
+                status: false,
+                message: "Usuário não possui perfil ativo"
+            });
         }
 
-        // Gerar token
+        const perfil = perfilResult.rows[0];
+
+        // 4. 🔴 VERIFICAR SE É PREMIUM
+        if (perfil.nome !== 'Premium' && perfil.nome !== 'Empresarial') {
+            console.log(`❌ Usuário com perfil "${perfil.nome}" não pode logar (apenas Premium)`);
+            return res.status(403).json({
+                status: false,
+                message: "Apenas usuários Premium podem acessar o sistema"
+            });
+        }
+
+        // 5. 🔴 VERIFICAR SE O USUÁRIO JÁ ESTÁ LOGADO EM OUTRO LUGAR
+        const sessaoExistente = await query(
+            `SELECT id, ip, data_criacao 
+             FROM sessoes 
+             WHERE usuario_id = $1 
+             AND ativo = TRUE 
+             AND data_expiracao > NOW()`,
+            [usuario.id]
+        );
+
+        if (sessaoExistente.rows.length > 0) {
+            const sessao = sessaoExistente.rows[0];
+            console.log(`❌ Usuário já está logado em outro dispositivo!`);
+            console.log(`   IP: ${sessao.ip}`);
+            console.log(`   Desde: ${sessao.data_criacao}`);
+            
+            return res.status(409).json({
+                status: false,
+                message: `Usuário já está logado em outro dispositivo. Faça logout antes de tentar novamente.`,
+                detalhes: {
+                    ip: sessao.ip,
+                    logado_desde: sessao.data_criacao
+                }
+            });
+        }
+
+        // 6. Gerar token e criar sessão
         const token = gerarToken();
         const expiracao = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-        console.log(`🔑 Token gerado: ${token.substring(0, 20)}...`);
 
         await transaction(async (client: PoolClient) => {
-            // Não precisa mais desativar todas as sessões do usuário, pois já desativamos a específica acima
-            // Mas mantemos por segurança
             await client.query(
-                `UPDATE sessoes 
-                 SET ativo = FALSE 
-                 WHERE usuario_id = $1 AND ativo = TRUE`,
-                [usuario.id]
+                `INSERT INTO sessoes (usuario_id, perfil_id, token, data_expiracao, ip, user_agent)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [usuario.id, perfil.perfil_id, token, expiracao, ip, userAgent]
             );
 
-            if (perfilId) {
-                await client.query(
-                    `INSERT INTO sessoes (usuario_id, perfil_id, token, data_expiracao, ip, user_agent)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [usuario.id, perfilId, token, expiracao, ip, userAgent]
-                );
-
-                await client.query(
-                    `INSERT INTO historico_login (usuario_id, perfil_id, ip, user_agent)
-                     VALUES ($1, $2, $3, $4)`,
-                    [usuario.id, perfilId, ip, userAgent]
-                );
-            }
+            await client.query(
+                `INSERT INTO historico_login (usuario_id, perfil_id, ip, user_agent)
+                 VALUES ($1, $2, $3, $4)`,
+                [usuario.id, perfil.perfil_id, ip, userAgent]
+            );
 
             await client.query(
                 `UPDATE usuarios 
@@ -282,7 +260,7 @@ async logar(req: Request, res: Response) {
             await client.query(
                 `INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                  VALUES ($1, $2, $3, $4, $5)`,
-                [usuario.id, perfilId, "login", "Login realizado com sucesso", ip]
+                [usuario.id, perfil.perfil_id, "login", "Login realizado com sucesso", ip]
             );
         });
 
@@ -298,7 +276,7 @@ async logar(req: Request, res: Response) {
                     nome: usuario.nome_usuario,
                     email: usuario.email
                 },
-                perfil: perfilNome,
+                perfil: perfil.nome,
                 token: token,
                 expira_em: "7 dias"
             }
@@ -312,6 +290,7 @@ async logar(req: Request, res: Response) {
         });
     }
 }
+
     // ============================================
     // LOGOUT
     // ============================================
