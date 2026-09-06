@@ -18,7 +18,7 @@ const allowedOrigins = process.env.CORS_ORIGINS
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         // Produção - Vercel (frontend)
-        'https://seu-frontend.vercel.app', // ⚠️ SUBSTITUA PELO SEU FRONTEND
+        'meu-front-rose.vercel.app', // ⚠️ SUBSTITUA PELO SEU FRONTEND
         // Produção - Vercel (backend - ela mesma)
         'https://back-end-stream.vercel.app',
     ];
