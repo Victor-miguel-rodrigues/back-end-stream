@@ -112,8 +112,8 @@ class UserCadastroController {
             }
             // Buscar usuário
             const resultado = await (0, connection_1.query)(`SELECT id, nome_usuario, email, senha_hash, ativo 
-                 FROM usuarios 
-                 WHERE email = $1`, [email.trim()]);
+             FROM usuarios 
+             WHERE email = $1`, [email.trim()]);
             console.log(`🔍 Usuários encontrados: ${resultado.rows.length}`);
             if (resultado.rows.length === 0) {
                 console.log("❌ Usuário não encontrado");
@@ -135,33 +135,14 @@ class UserCadastroController {
                     message: "Usuário desativado"
                 });
             }
-            // 🔴 CALCULAR O HASH DA SENHA DIGITADA
+            // Verificar senha
             const senhaDigitadaHash = (0, crypto_1.sha256)(senha);
-            console.log(`🔍 Hash CALCULADO (senha digitada): "${senhaDigitadaHash}"`);
-            console.log(`🔍 Hash CALCULADO (primeiros 20): ${senhaDigitadaHash.substring(0, 20)}...`);
-            console.log(`🔍 Hash no BANCO:               "${usuario.senha_hash}"`);
+            console.log(`🔍 Hash CALCULADO: "${senhaDigitadaHash}"`);
             console.log(`🔍 Comparação: ${senhaDigitadaHash === usuario.senha_hash ? '✅ IGUAIS' : '❌ DIFERENTES'}`);
-            // 🔴 COMPARAÇÃO CARACTERE POR CARACTERE SE FOR DIFERENTE
-            if (senhaDigitadaHash !== usuario.senha_hash) {
-                console.log("🔍 COMPARAÇÃO DETALHADA:");
-                console.log(`  Tamanho hash digitado: ${senhaDigitadaHash.length}`);
-                console.log(`  Tamanho hash banco:    ${usuario.senha_hash?.length}`);
-                // Mostrar onde está a diferença
-                const minLength = Math.min(senhaDigitadaHash.length, usuario.senha_hash?.length || 0);
-                for (let i = 0; i < minLength; i++) {
-                    if (senhaDigitadaHash[i] !== usuario.senha_hash[i]) {
-                        console.log(`  ❌ Diferença na posição ${i}: '${senhaDigitadaHash[i]}' vs '${usuario.senha_hash[i]}'`);
-                        break;
-                    }
-                }
-                if (senhaDigitadaHash.length !== usuario.senha_hash?.length) {
-                    console.log(`  ❌ Tamanhos diferentes: ${senhaDigitadaHash.length} vs ${usuario.senha_hash?.length}`);
-                }
-            }
             if (!(0, crypto_1.compararSenha)(senha, usuario.senha_hash)) {
                 console.log("❌ Senha incorreta");
                 await (0, connection_1.query)(`INSERT INTO logs_sistema (usuario_id, acao, descricao, ip) 
-                     VALUES ($1, $2, $3, $4)`, [usuario.id, "login_falha", "Tentativa de login com senha incorreta", ip]);
+                 VALUES ($1, $2, $3, $4)`, [usuario.id, "login_falha", "Tentativa de login com senha incorreta", ip]);
                 return res.status(401).json({
                     status: false,
                     message: "Email ou senha inválidos"
@@ -170,13 +151,13 @@ class UserCadastroController {
             console.log("✅ Senha correta!");
             // Buscar perfil do usuário
             const perfilResult = await (0, connection_1.query)(`SELECT up.perfil_id, p.nome, p.limite_usuarios_logados
-                 FROM usuario_perfil up
-                 JOIN perfis_acesso p ON up.perfil_id = p.id
-                 WHERE up.usuario_id = $1 
-                 AND up.ativo = TRUE 
-                 AND (up.data_validade IS NULL OR up.data_validade > NOW())
-                 ORDER BY up.data_inicio DESC
-                 LIMIT 1`, [usuario.id]);
+             FROM usuario_perfil up
+             JOIN perfis_acesso p ON up.perfil_id = p.id
+             WHERE up.usuario_id = $1 
+             AND up.ativo = TRUE 
+             AND (up.data_validade IS NULL OR up.data_validade > NOW())
+             ORDER BY up.data_inicio DESC
+             LIMIT 1`, [usuario.id]);
             let perfilNome = "Sem perfil";
             let perfilId = null;
             console.log(`🔍 Perfis encontrados: ${perfilResult.rows.length}`);
@@ -185,19 +166,23 @@ class UserCadastroController {
                 perfilNome = perfil.nome;
                 perfilId = perfil.perfil_id;
                 console.log(`🔍 Perfil: ${perfilNome}`);
-                const vagasResult = await (0, connection_1.query)(`SELECT COUNT(DISTINCT s.usuario_id) as logados
-                     FROM sessoes s
-                     WHERE s.perfil_id = $1 
-                     AND s.ativo = TRUE 
-                     AND s.data_expiracao > NOW()`, [perfil.perfil_id]);
-                const logados = parseInt(vagasResult.rows[0].logados);
-                console.log(`🔍 Logados no perfil: ${logados}/${perfil.limite_usuarios_logados}`);
-                if (logados >= perfil.limite_usuarios_logados) {
-                    console.log("❌ Perfil lotado");
-                    return res.status(429).json({
+                // 🔴 VERIFICAR SE É PREMIUM (opcional - se quiser bloquear gratuitos)
+                if (perfilNome !== 'Premium' && perfilNome !== 'Empresarial') {
+                    console.log(`❌ Usuário com perfil "${perfilNome}" não pode logar (apenas Premium)`);
+                    return res.status(403).json({
                         status: false,
-                        message: `Perfil "${perfil.nome}" está lotado. Limite: ${perfil.limite_usuarios_logados} usuário(s) logado(s) simultaneamente.`
+                        message: "Apenas usuários Premium podem acessar o sistema"
                     });
+                }
+                // ✅ NOVO: Verifica se o USUÁRIO já tem uma sessão ativa
+                const sessaoExistente = await (0, connection_1.query)(`SELECT id FROM sessoes 
+                 WHERE usuario_id = $1 
+                 AND ativo = TRUE 
+                 AND data_expiracao > NOW()`, [usuario.id]);
+                // Se já tiver sessão ativa, desativa (permite apenas 1 por usuário)
+                if (sessaoExistente.rows.length > 0) {
+                    console.log(`⚠️ Usuário já tem sessão ativa, substituindo...`);
+                    await (0, connection_1.query)(`UPDATE sessoes SET ativo = FALSE WHERE id = $1`, [sessaoExistente.rows[0].id]);
                 }
             }
             else {
@@ -208,21 +193,22 @@ class UserCadastroController {
             const expiracao = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
             console.log(`🔑 Token gerado: ${token.substring(0, 20)}...`);
             await (0, connection_1.transaction)(async (client) => {
+                // Não precisa mais desativar todas as sessões do usuário, pois já desativamos a específica acima
+                // Mas mantemos por segurança
                 await client.query(`UPDATE sessoes 
-                     SET ativo = FALSE 
-                     WHERE usuario_id = $1 AND ativo = TRUE`, [usuario.id]);
+                 SET ativo = FALSE 
+                 WHERE usuario_id = $1 AND ativo = TRUE`, [usuario.id]);
                 if (perfilId) {
                     await client.query(`INSERT INTO sessoes (usuario_id, perfil_id, token, data_expiracao, ip, user_agent)
-                         VALUES ($1, $2, $3, $4, $5, $6)`, [usuario.id, perfilId, token, expiracao, ip, userAgent]);
+                     VALUES ($1, $2, $3, $4, $5, $6)`, [usuario.id, perfilId, token, expiracao, ip, userAgent]);
                     await client.query(`INSERT INTO historico_login (usuario_id, perfil_id, ip, user_agent)
-                         VALUES ($1, $2, $3, $4)`, [usuario.id, perfilId, ip, userAgent]);
+                     VALUES ($1, $2, $3, $4)`, [usuario.id, perfilId, ip, userAgent]);
                 }
-                // Use apenas:
                 await client.query(`UPDATE usuarios 
-                    SET ultimo_login = NOW()
-                    WHERE id = $1`, [usuario.id]);
+                SET ultimo_login = NOW()
+                WHERE id = $1`, [usuario.id]);
                 await client.query(`INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
-                     VALUES ($1, $2, $3, $4, $5)`, [usuario.id, perfilId, "login", "Login realizado com sucesso", ip]);
+                 VALUES ($1, $2, $3, $4, $5)`, [usuario.id, perfilId, "login", "Login realizado com sucesso", ip]);
             });
             console.log("✅ Login realizado com sucesso!");
             console.log("========================================");
