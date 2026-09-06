@@ -12,8 +12,10 @@ const allowedOrigins = process.env.CORS_ORIGINS
         'http://127.0.0.1:5500',
         'http://localhost:3000',
         'http://127.0.0.1:3000',
-        'https://meu-front-rose.vercel.app',
+        'https://meu-front-rose.vercel.app', // ✅ SEU FRONTEND
         'https://back-end-stream.vercel.app',
+        // 🔴 ADICIONE TAMBÉM COM A BARRA NO FINAL SE NECESSÁRIO
+        'https://meu-front-rose.vercel.app/',
     ];
 
 console.log('Origens CORS permitidas:', allowedOrigins);
