@@ -1,10 +1,13 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.corsLogger = exports.corsMiddleware = exports.corsOptions = void 0;
 // src/middlewares/cors.ts
-import cors, { CorsOptions } from 'cors';
-import { Request, Response, NextFunction } from 'express';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
+const cors_1 = __importDefault(require("cors"));
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 const allowedOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
     : [
@@ -15,17 +18,15 @@ const allowedOrigins = process.env.CORS_ORIGINS
         'https://meu-front-rose.vercel.app',
         'https://back-end-stream.vercel.app',
     ];
-
 console.log('Origens CORS permitidas:', allowedOrigins);
-
-export const corsOptions: CorsOptions = {
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+exports.corsOptions = {
+    origin: (origin, callback) => {
         if (!origin) {
             return callback(null, true);
         }
-
         const isAllowed = allowedOrigins.some(allowed => {
-            if (allowed === origin) return true;
+            if (allowed === origin)
+                return true;
             if (allowed.includes('*')) {
                 const pattern = allowed.replace('*', '.*');
                 const regex = new RegExp(`^${pattern}$`);
@@ -33,11 +34,9 @@ export const corsOptions: CorsOptions = {
             }
             return false;
         });
-
         if (process.env.NODE_ENV === 'development' || isAllowed) {
             return callback(null, true);
         }
-
         console.warn('CORS bloqueado para origem:', origin);
         callback(new Error('Origem nao permitida por CORS: ' + origin));
     },
@@ -47,15 +46,14 @@ export const corsOptions: CorsOptions = {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     exposedHeaders: ['Content-Range', 'X-Content-Range']
 };
-
-export const corsMiddleware = cors(corsOptions);
-
+exports.corsMiddleware = (0, cors_1.default)(exports.corsOptions);
 // ADICIONOU _ antes de res (não usado)
-export const corsLogger = (req: Request, _res: Response, next: NextFunction): void => {
+const corsLogger = (req, _res, next) => {
     const origin = req.headers.origin || 'Sem origem';
-    const isAllowed = origin === 'Sem origem' || 
+    const isAllowed = origin === 'Sem origem' ||
         allowedOrigins.some(allowed => {
-            if (allowed === origin) return true;
+            if (allowed === origin)
+                return true;
             if (allowed.includes('*')) {
                 const pattern = allowed.replace('*', '.*');
                 const regex = new RegExp(`^${pattern}$`);
@@ -63,13 +61,13 @@ export const corsLogger = (req: Request, _res: Response, next: NextFunction): vo
             }
             return false;
         }) || process.env.NODE_ENV === 'development';
-
     console.log(`CORS ${req.method} ${req.url} - Origin: ${origin} ${isAllowed ? 'OK' : 'BLOQUEADO'}`);
     next();
 };
-
-export default {
-    corsOptions,
-    corsMiddleware,
-    corsLogger
+exports.corsLogger = corsLogger;
+exports.default = {
+    corsOptions: exports.corsOptions,
+    corsMiddleware: exports.corsMiddleware,
+    corsLogger: exports.corsLogger
 };
+//# sourceMappingURL=cors.js.map

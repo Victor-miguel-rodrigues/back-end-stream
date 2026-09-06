@@ -4,37 +4,40 @@ import { validarUsuario, validarLogin } from "../validators/userValidator";
 
 const router = Router();
 
-// ============================================
-// ROTAS PÚBLICAS
-// ============================================
-
 // Health check
-router.get("/health", (req, res) => {
+router.get("/health", (_req, res) => {  // ADICIONOU _
     res.json({
         status: "online",
         timestamp: new Date().toISOString(),
-        versao: "1.0.0"
+        versao: "1.0.0",
+        ambiente: process.env.NODE_ENV || "development"
     });
 });
 
-// Listar (teste)
+// Rota raiz
+router.get("/", (_req, res) => {  // ADICIONOU _
+    res.json({
+        status: "online",
+        mensagem: "API de Login",
+        versao: "1.0.0",
+        endpoints: [
+            "GET /",
+            "GET /health",
+            "GET /listar",
+            "POST /cadastrar",
+            "POST /login",
+            "POST /validar-token",
+            "GET /validar-token",
+            "POST /logout"
+        ]
+    });
+});
+
 router.get("/listar", authController.listar);
-
-// Cadastrar usuário
 router.post("/cadastrar", validarUsuario, authController.receber);
-
-// Login
 router.post("/login", validarLogin, authController.logar);
-
-// Validar token
 router.post("/validar-token", authController.validarToken);
 router.get("/validar-token", authController.validarToken);
-
-// ============================================
-// ROTAS PROTEGIDAS (com token)
-// ============================================
-
-// Logout
 router.post("/logout", authController.logout);
 
 export default router;

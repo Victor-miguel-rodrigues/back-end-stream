@@ -8,8 +8,8 @@ const app = express();
 // ============================================
 // CORS - DEVE VIR ANTES DE QUALQUER ROTA
 // ============================================
-app.use(corsLogger);  // Log das requisições CORS
-app.use(corsMiddleware); // Middleware CORS configurado
+app.use(corsLogger);
+app.use(corsMiddleware);
 
 // ============================================
 // PARSERS
@@ -23,24 +23,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use(router);
 
 // ============================================
-// HEALTH CHECK (público)
-// ============================================
-app.get("/health", (req, res) => {
-    res.json({
-        status: "online",
-        timestamp: new Date().toISOString(),
-        versao: "1.0.0",
-        ambiente: process.env.NODE_ENV || "development"
-    });
-});
-
-// ============================================
 // TRATAMENTO DE ERRO 404
 // ============================================
 app.use((req, res) => {
     res.status(404).json({
         status: false,
-        message: "Rota não encontrada",
+        message: "Rota nao encontrada",
         path: req.url
     });
 });

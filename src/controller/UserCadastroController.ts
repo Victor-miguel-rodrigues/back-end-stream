@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { PoolClient } from "pg";
-import pool, { query, transaction } from "../database/connection";
+import { query, transaction } from "../database/connection"; // Removeu 'pool'
 import { sha256, gerarToken, compararSenha } from "../utils/crypto";
 
 // ============================================
@@ -10,7 +10,7 @@ export class UserCadastroController {
     // ============================================
     // LISTAR (TESTE)
     // ============================================
-    listar(req: any, res: any) {
+    listar(_req: any, res: any) {  // ADICIONOU _ antes de req
         return res.json({
             mensage: "Funcionado direitinho",
             status: true,
@@ -25,7 +25,6 @@ export class UserCadastroController {
         try {
             const { nome_usuario, email, senha } = req.body;
 
-            // Validar se os campos existem
             if (!nome_usuario || !email || !senha) {
                 return res.status(400).json({
                     status: false,
@@ -33,7 +32,6 @@ export class UserCadastroController {
                 });
             }
 
-            // Validar email
             const emailValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailValido.test(email)) {
                 return res.status(400).json({
@@ -42,7 +40,6 @@ export class UserCadastroController {
                 });
             }
 
-            // Validar senha (mínimo 6 caracteres)
             if (senha.length < 6) {
                 return res.status(400).json({
                     status: false,
@@ -50,7 +47,6 @@ export class UserCadastroController {
                 });
             }
 
-            // Verificar se email já existe
             const existeResult = await query(
                 "SELECT id FROM usuarios WHERE email = $1",
                 [email]
@@ -63,12 +59,9 @@ export class UserCadastroController {
                 });
             }
 
-            // Criptografar a senha
             const senhaHash = sha256(senha);
 
-            // Inserir usuário usando transaction
             const resultado = await transaction(async (client: PoolClient) => {
-                // Inserir usuário
                 const insertResult = await client.query(
                     `INSERT INTO usuarios (nome_usuario, email, senha_hash) 
                      VALUES ($1, $2, $3) 
@@ -76,7 +69,6 @@ export class UserCadastroController {
                     [nome_usuario.trim(), email.trim(), senhaHash]
                 );
 
-                // Registrar log
                 await client.query(
                     `INSERT INTO logs_sistema (usuario_id, acao, descricao, ip)
                      VALUES ($1, $2, $3, $4)`,
@@ -98,7 +90,7 @@ export class UserCadastroController {
             });
 
         } catch (error) {
-            console.error("❌ Erro ao cadastrar usuário:", error);
+            console.error("Erro ao cadastrar usuário:", error);
             return res.status(500).json({
                 status: false,
                 message: "Erro ao cadastrar usuário"
@@ -115,7 +107,6 @@ export class UserCadastroController {
             const ip = req.ip || req.connection?.remoteAddress || "0.0.0.0";
             const userAgent = req.headers["user-agent"] || "";
 
-            // Validar entrada
             if (!email || !senha) {
                 return res.status(400).json({
                     status: false,
@@ -123,7 +114,6 @@ export class UserCadastroController {
                 });
             }
 
-            // Buscar usuário
             const resultado = await query(
                 `SELECT id, nome_usuario, email, senha_hash, ativo 
                  FROM usuarios 
@@ -140,7 +130,6 @@ export class UserCadastroController {
 
             const usuario = resultado.rows[0];
 
-            // Verificar se usuário está ativo
             if (!usuario.ativo) {
                 return res.status(403).json({
                     status: false,
@@ -148,9 +137,7 @@ export class UserCadastroController {
                 });
             }
 
-            // Verificar senha
             if (!compararSenha(senha, usuario.senha_hash)) {
-                // Registrar tentativa falha
                 await query(
                     `INSERT INTO logs_sistema (usuario_id, acao, descricao, ip) 
                      VALUES ($1, $2, $3, $4)`,
@@ -163,7 +150,6 @@ export class UserCadastroController {
                 });
             }
 
-            // Buscar perfil do usuário
             const perfilResult = await query(
                 `SELECT up.perfil_id, p.nome, p.limite_usuarios_logados
                  FROM usuario_perfil up
@@ -184,7 +170,6 @@ export class UserCadastroController {
                 perfilNome = perfil.nome;
                 perfilId = perfil.perfil_id;
 
-                // Verificar se perfil tem vaga
                 const vagasResult = await query(
                     `SELECT COUNT(DISTINCT s.usuario_id) as logados
                      FROM sessoes s
@@ -203,13 +188,10 @@ export class UserCadastroController {
                 }
             }
 
-            // Gerar token
             const token = gerarToken();
             const expiracao = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-            // Usar transaction para login
             await transaction(async (client: PoolClient) => {
-                // Desativar sessões antigas do usuário
                 await client.query(
                     `UPDATE sessoes 
                      SET ativo = FALSE 
@@ -217,7 +199,6 @@ export class UserCadastroController {
                     [usuario.id]
                 );
 
-                // Criar nova sessão (se tiver perfil)
                 if (perfilId) {
                     await client.query(
                         `INSERT INTO sessoes (usuario_id, perfil_id, token, data_expiracao, ip, user_agent)
@@ -225,7 +206,6 @@ export class UserCadastroController {
                         [usuario.id, perfilId, token, expiracao, ip, userAgent]
                     );
 
-                    // Registrar histórico de login
                     await client.query(
                         `INSERT INTO historico_login (usuario_id, perfil_id, ip, user_agent)
                          VALUES ($1, $2, $3, $4)`,
@@ -233,7 +213,6 @@ export class UserCadastroController {
                     );
                 }
 
-                // Atualizar último login do usuário
                 await client.query(
                     `UPDATE usuarios 
                      SET ultimo_login = NOW(), ultimo_ip = $1 
@@ -241,7 +220,6 @@ export class UserCadastroController {
                     [ip, usuario.id]
                 );
 
-                // Registrar log de sucesso
                 await client.query(
                     `INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                      VALUES ($1, $2, $3, $4, $5)`,
@@ -265,7 +243,7 @@ export class UserCadastroController {
             });
 
         } catch (error) {
-            console.error("❌ Erro no login:", error);
+            console.error("Erro no login:", error);
             return res.status(500).json({
                 status: false,
                 message: "Erro interno do servidor"
@@ -287,7 +265,6 @@ export class UserCadastroController {
                 });
             }
 
-            // Buscar sessão
             const sessaoResult = await query(
                 `SELECT usuario_id, perfil_id, ip 
                  FROM sessoes 
@@ -304,9 +281,7 @@ export class UserCadastroController {
 
             const sessao = sessaoResult.rows[0];
 
-            // Usar transaction para logout
             await transaction(async (client: PoolClient) => {
-                // Desativar sessão
                 await client.query(
                     `UPDATE sessoes 
                      SET ativo = FALSE 
@@ -314,7 +289,6 @@ export class UserCadastroController {
                     [token]
                 );
 
-                // Atualizar histórico de login
                 await client.query(
                     `UPDATE historico_login 
                      SET data_logout = NOW(),
@@ -327,7 +301,6 @@ export class UserCadastroController {
                     [sessao.usuario_id, sessao.perfil_id]
                 );
 
-                // Registrar log
                 await client.query(
                     `INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                      VALUES ($1, $2, $3, $4, $5)`,
@@ -341,7 +314,7 @@ export class UserCadastroController {
             });
 
         } catch (error) {
-            console.error("❌ Erro no logout:", error);
+            console.error("Erro no logout:", error);
             return res.status(500).json({
                 status: false,
                 message: "Erro ao fazer logout"
@@ -405,7 +378,7 @@ export class UserCadastroController {
             });
 
         } catch (error) {
-            console.error("❌ Erro ao validar token:", error);
+            console.error("Erro ao validar token:", error);
             return res.status(500).json({
                 status: false,
                 message: "Erro ao validar token"
@@ -414,7 +387,4 @@ export class UserCadastroController {
     }
 }
 
-// ============================================
-// EXPORTAR INSTÂNCIA
-// ============================================
 export default new UserCadastroController();
