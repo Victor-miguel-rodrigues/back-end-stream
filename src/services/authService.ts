@@ -156,7 +156,7 @@ export class AuthService {
     }
 
     // ============================================
-    // LOGOUT
+    // LOGOUT - CORRIGIDO
     // ============================================
     async logout(token: string): Promise<{ mensagem: string }> {
         return await transaction(async (client: PoolClient) => {
@@ -173,6 +173,7 @@ export class AuthService {
 
             const sessao = sessaoResult.rows[0];
 
+            // Desativar sessão
             await client.query(
                 `UPDATE sessoes 
                  SET ativo = FALSE 
@@ -180,6 +181,7 @@ export class AuthService {
                 [token]
             );
 
+            // Atualizar histórico de login
             await client.query(
                 `UPDATE historico_login 
                  SET data_logout = NOW(),
@@ -192,6 +194,7 @@ export class AuthService {
                 [sessao.usuario_id, sessao.perfil_id]
             );
 
+            // Registrar log
             await client.query(
                 `INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                  VALUES ($1, $2, $3, $4, $5)`,
