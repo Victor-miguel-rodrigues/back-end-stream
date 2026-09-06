@@ -217,9 +217,10 @@ class UserCadastroController {
                     await client.query(`INSERT INTO historico_login (usuario_id, perfil_id, ip, user_agent)
                          VALUES ($1, $2, $3, $4)`, [usuario.id, perfilId, ip, userAgent]);
                 }
+                // Use apenas:
                 await client.query(`UPDATE usuarios 
-                     SET ultimo_login = NOW(), ultimo_ip = $1 
-                     WHERE id = $2`, [ip, usuario.id]);
+                    SET ultimo_login = NOW()
+                    WHERE id = $1`, [usuario.id]);
                 await client.query(`INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                      VALUES ($1, $2, $3, $4, $5)`, [usuario.id, perfilId, "login", "Login realizado com sucesso", ip]);
             });

@@ -284,11 +284,12 @@ export class UserCadastroController {
                     );
                 }
 
+                // Use apenas:
                 await client.query(
                     `UPDATE usuarios 
-                     SET ultimo_login = NOW(), ultimo_ip = $1 
-                     WHERE id = $2`,
-                    [ip, usuario.id]
+                    SET ultimo_login = NOW()
+                    WHERE id = $1`,
+                    [usuario.id]
                 );
 
                 await client.query(
