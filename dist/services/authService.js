@@ -102,7 +102,7 @@ class AuthService {
         });
     }
     // ============================================
-    // LOGOUT
+    // LOGOUT - CORRIGIDO
     // ============================================
     async logout(token) {
         return await (0, connection_1.transaction)(async (client) => {
@@ -113,9 +113,11 @@ class AuthService {
                 throw new types_1.AppError("Sessão não encontrada", 404);
             }
             const sessao = sessaoResult.rows[0];
+            // Desativar sessão
             await client.query(`UPDATE sessoes 
                  SET ativo = FALSE 
                  WHERE token = $1`, [token]);
+            // Atualizar histórico de login
             await client.query(`UPDATE historico_login 
                  SET data_logout = NOW(),
                      duracao_minutos = EXTRACT(EPOCH FROM (NOW() - data_login)) / 60
@@ -124,6 +126,7 @@ class AuthService {
                  AND data_logout IS NULL 
                  ORDER BY data_login DESC 
                  LIMIT 1`, [sessao.usuario_id, sessao.perfil_id]);
+            // Registrar log
             await client.query(`INSERT INTO logs_sistema (usuario_id, perfil_id, acao, descricao, ip)
                  VALUES ($1, $2, $3, $4, $5)`, [sessao.usuario_id, sessao.perfil_id, "logout", "Logout realizado", sessao.ip]);
             return { mensagem: "Logout realizado com sucesso" };
