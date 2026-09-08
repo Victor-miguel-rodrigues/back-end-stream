@@ -381,6 +381,45 @@ async logout(req: Request, res: Response) {
 }
 
     // ============================================
+    // VERIFICAR PAGAMENTO
+    // ============================================
+    async checkPagamento(req: Request, res: Response) {
+        try {
+            const { email } = req.query;
+
+            if (!email) {
+                return res.status(400).json({
+                    status: false,
+                    message: "Email é obrigatório"
+                });
+            }
+
+            const result = await query(
+                `SELECT pago FROM usuarios WHERE email = $1`,
+                [email]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({
+                    status: false,
+                    message: "Usuário não encontrado"
+                });
+            }
+
+            return res.json({
+                status: true,
+                pago: result.rows[0].pago || false
+            });
+
+        } catch (error) {
+            return res.status(500).json({
+                status: false,
+                message: "Erro ao verificar pagamento"
+            });
+        }
+    }
+
+    // ============================================
     // VALIDAR TOKEN
     // ============================================
     async validarToken(req: Request, res: Response) {

@@ -22,16 +22,19 @@ router.get("/", (_req, res) => {  // ADICIONOU _
         versao: "1.0.0",
         endpoints: [
             "GET /",
-            "GET /health",
-            "GET /listar",
-            "POST /cadastrar",
-            "POST /login",
-            "POST /validar-token",
-            "GET /validar-token",
-            "POST /logout"
         ]
     });
 });
+
+/*
+"GET /health",
+    "GET /listar",
+    "POST /cadastrar",
+    "POST /login",
+    "POST /validar-token",
+    "GET /validar-token",
+    "POST /logout"
+*/
 
 router.get("/listar", authController.listar);
 router.post("/cadastrar", validarUsuario, authController.receber);
@@ -39,5 +42,6 @@ router.post("/login", validarLogin, authController.logar);
 router.post("/validar-token", authController.validarToken);
 router.get("/validar-token", authController.validarToken);
 router.post("/logout", authController.logout);
+router.get("/check-pagamento", authController.checkPagamento);
 
 export default router;
