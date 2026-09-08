@@ -83,7 +83,6 @@ export class UserCadastroController {
                     pago: pago || false
                 });
 
-                // Associar perfil se fornecido
                 if (perfil) {
                     const perfilResult = await client.query(
                         `SELECT id FROM perfis_acesso WHERE nome = $1`,
@@ -129,7 +128,7 @@ export class UserCadastroController {
     }
 
     // ============================================
-    // LOGIN (COM VERIFICAÇÃO DE PAGAMENTO)
+    // LOGIN (COM VERIFICAÇÃO DE PAGAMENTO E DATA_VALIDADE)
     // ============================================
     async logar(req: Request, res: Response) {
         try {
@@ -152,7 +151,7 @@ export class UserCadastroController {
                 });
             }
 
-            // 1. Buscar usuário (INCLUINDO CAMPO pago)
+            // 1. Buscar usuário
             const resultado = await query(
                 `SELECT id, nome_usuario, email, senha_hash, ativo, pago 
                  FROM usuarios 
@@ -178,7 +177,7 @@ export class UserCadastroController {
                 });
             }
 
-            // 2. 🔴 VERIFICAR SE O USUÁRIO ESTÁ PAGO (ANTES DA SENHA)
+            // 2. VERIFICAR SE O USUÁRIO ESTÁ PAGO
             if (!usuario.pago) {
                 console.log("❌ Usuário não pago");
                 await query(
@@ -210,9 +209,9 @@ export class UserCadastroController {
 
             console.log("✅ Senha correta!");
 
-            // 4. Buscar perfil do usuário
+            // 4. 🔴 BUSCAR PERFIL COM DATA_VALIDADE
             const perfilResult = await query(
-                `SELECT up.perfil_id, p.nome
+                `SELECT up.perfil_id, p.nome, up.data_validade
                  FROM usuario_perfil up
                  JOIN perfis_acesso p ON up.perfil_id = p.id
                  WHERE up.usuario_id = $1 
@@ -231,8 +230,9 @@ export class UserCadastroController {
             }
 
             const perfil = perfilResult.rows[0];
+            const dataValidade = perfil.data_validade || null;
 
-            // 5. 🔴 VERIFICAR SE É PREMIUM
+            // 5. VERIFICAR SE É PREMIUM
             if (perfil.nome !== 'Premium' && perfil.nome !== 'Empresarial') {
                 console.log(`❌ Usuário com perfil "${perfil.nome}" não pode logar (apenas Premium)`);
                 return res.status(403).json({
@@ -241,7 +241,7 @@ export class UserCadastroController {
                 });
             }
 
-            // 6. 🔴 VERIFICAR SE O USUÁRIO JÁ ESTÁ LOGADO EM OUTRO LUGAR
+            // 6. VERIFICAR SE O USUÁRIO JÁ ESTÁ LOGADO EM OUTRO LUGAR
             const sessaoExistente = await query(
                 `SELECT id, ip, data_criacao 
                  FROM sessoes 
@@ -301,6 +301,7 @@ export class UserCadastroController {
             console.log("✅ Login realizado com sucesso!");
             console.log("========================================");
 
+            // 8. 🔴 RETORNAR COM DATA_VALIDADE
             return res.status(200).json({
                 status: true,
                 message: "Login realizado com sucesso",
@@ -312,7 +313,8 @@ export class UserCadastroController {
                     },
                     perfil: perfil.nome,
                     token: token,
-                    expira_em: "7 dias"
+                    expira_em: "7 dias",
+                    data_validade: dataValidade  // 🔴 ADICIONADO
                 }
             });
 
