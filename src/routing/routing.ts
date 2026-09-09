@@ -1,6 +1,7 @@
 import { Router } from "express";
 import authController from "../controller/UserCadastroController";
 import { validarUsuario, validarLogin } from "../validators/userValidator";
+import { validarToken } from "../middlewares/auth";
 
 const router = Router();
 
@@ -43,5 +44,19 @@ router.post("/validar-token", authController.validarToken);
 router.get("/validar-token", authController.validarToken);
 router.post("/logout", authController.logout);
 router.get("/check-pagamento", authController.checkPagamento);
+
+// ============================================
+// ROTAS DE FAVORITOS (PROTEGIDAS)
+// ============================================
+
+// Listar favoritos
+router.get("/favoritos", validarToken, authController.listarFavoritos);
+
+// Adicionar favorito
+router.post("/favoritos", validarToken, authController.adicionarFavorito);
+
+// Remover favorito
+router.delete("/favoritos/:item_id", validarToken, authController.removerFavorito);
+
 
 export default router;

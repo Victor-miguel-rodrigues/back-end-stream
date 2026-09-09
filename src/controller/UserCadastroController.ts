@@ -508,6 +508,149 @@ export class UserCadastroController {
             });
         }
     }
+
+
+    
+
+// ============================================
+// LISTAR FAVORITOS DO USUÁRIO
+// ============================================
+async listarFavoritos(req: Request, res: Response) {
+    try {
+        // Pegar usuário do token (middleware já deve ter colocado)
+        const usuarioId = (req as any).usuario?.id;
+        
+        if (!usuarioId) {
+            return res.status(401).json({
+                status: false,
+                message: 'Usuário não autenticado'
+            });
+        }
+
+        const result = await query(
+            `SELECT item_id, item_nome, item_tipo, data_adicao 
+             FROM favoritos_usuarios 
+             WHERE usuario_id = $1 
+             ORDER BY data_adicao DESC`,
+            [usuarioId]
+        );
+
+        return res.json({
+            status: true,
+            dados: result.rows
+        });
+
+    } catch (error) {
+        console.error('Erro ao listar favoritos:', error);
+        return res.status(500).json({
+            status: false,
+            message: 'Erro ao listar favoritos'
+        });
+    }
+}
+
+// ============================================
+// ADICIONAR FAVORITO
+// ============================================
+async adicionarFavorito(req: Request, res: Response) {
+    try {
+        const usuarioId = (req as any).usuario?.id;
+        const { item_id, item_nome, item_tipo } = req.body;
+
+        if (!usuarioId) {
+            return res.status(401).json({
+                status: false,
+                message: 'Usuário não autenticado'
+            });
+        }
+
+        if (!item_id || !item_nome || !item_tipo) {
+            return res.status(400).json({
+                status: false,
+                message: 'item_id, item_nome e item_tipo são obrigatórios'
+            });
+        }
+
+        // Verificar se já existe
+        const existente = await query(
+            `SELECT id FROM favoritos_usuarios 
+             WHERE usuario_id = $1 AND item_id = $2`,
+            [usuarioId, item_id]
+        );
+
+        if (existente.rows.length > 0) {
+            return res.status(409).json({
+                status: false,
+                message: 'Item já está nos favoritos'
+            });
+        }
+
+        const result = await query(
+            `INSERT INTO favoritos_usuarios (usuario_id, item_id, item_nome, item_tipo)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id, item_id, item_nome, item_tipo, data_adicao`,
+            [usuarioId, item_id, item_nome, item_tipo]
+        );
+
+        return res.status(201).json({
+            status: true,
+            message: 'Favorito adicionado com sucesso',
+            dados: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('Erro ao adicionar favorito:', error);
+        return res.status(500).json({
+            status: false,
+            message: 'Erro ao adicionar favorito'
+        });
+    }
+}
+
+// ============================================
+// REMOVER FAVORITO
+// ============================================
+async removerFavorito(req: Request, res: Response) {
+    try {
+        const usuarioId = (req as any).usuario?.id;
+        const { item_id } = req.params;
+
+        if (!usuarioId) {
+            return res.status(401).json({
+                status: false,
+                message: 'Usuário não autenticado'
+            });
+        }
+
+        const result = await query(
+            `DELETE FROM favoritos_usuarios 
+             WHERE usuario_id = $1 AND item_id = $2
+             RETURNING id`,
+            [usuarioId, item_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                status: false,
+                message: 'Favorito não encontrado'
+            });
+        }
+
+        return res.json({
+            status: true,
+            message: 'Favorito removido com sucesso'
+        });
+
+    } catch (error) {
+        console.error('Erro ao remover favorito:', error);
+        return res.status(500).json({
+            status: false,
+            message: 'Erro ao remover favorito'
+        });
+    }
+}
+
+
 }
 
 export default new UserCadastroController();

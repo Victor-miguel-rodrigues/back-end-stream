@@ -6,6 +6,9 @@ export declare class UserCadastroController {
     logout(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     checkPagamento(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     validarToken(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    listarFavoritos(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    adicionarFavorito(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    removerFavorito(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 }
 declare const _default: UserCadastroController;
 export default _default;
