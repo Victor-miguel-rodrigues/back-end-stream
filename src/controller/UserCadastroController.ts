@@ -3,6 +3,7 @@ import { PoolClient } from "pg";
 import { query, transaction } from "../database/connection";
 import { sha256, gerarToken, compararSenha } from "../utils/crypto";
 
+
 // ============================================
 // CONTROLLER UNIFICADO
 // ============================================
@@ -649,6 +650,7 @@ async removerFavorito(req: Request, res: Response) {
         });
     }
 }
+
 
 
 }

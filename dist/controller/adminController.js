@@ -252,6 +252,24 @@ class AdminController {
             });
         }
     }
+    async excluirUsuario(req, // resolve o string | string[]
+    res) {
+        try {
+            // Resolve o string | string[] (redundante aqui, mas seguro)
+            const raw = req.params.id;
+            const idStr = Array.isArray(raw) ? raw[0] : raw;
+            // Resolve o string -> number
+            const id = Number(idStr);
+            if (isNaN(id)) {
+                return res.status(400).json({ error: 'ID inválido' });
+            }
+            // ... sua lógica (ex: prisma.user.delete({ where: { id } }))
+            return res.status(200).json({ ok: true });
+        }
+        catch (error) {
+            return res.status(500).json({ error: 'Erro interno' });
+        }
+    }
 }
 exports.AdminController = AdminController;
 exports.default = new AdminController();

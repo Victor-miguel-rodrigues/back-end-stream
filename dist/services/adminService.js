@@ -251,6 +251,35 @@ class AdminService {
         await (0, connection_1.query)(`INSERT INTO logs_admin (admin_id, acao, descricao, dados_acao, ip)
              VALUES ($1, $2, $3, $4, $5)`, [admin_id, acao, descricao, dados_acao ? JSON.stringify(dados_acao) : null, ip]);
     }
+    // ============================================
+    // EXCLUIR USUÁRIO
+    // ============================================
+    async excluirUsuario(usuario_id, admin_id, ip) {
+        await (0, connection_1.transaction)(async (client) => {
+            // 1. Buscar dados do usuário antes de excluir
+            const userResult = await client.query(`SELECT id, nome_usuario, email FROM usuarios WHERE id = $1`, [usuario_id]);
+            if (userResult.rows.length === 0) {
+                throw new admin_1.AppError("Usuario nao encontrado", 404);
+            }
+            const usuario = userResult.rows[0];
+            // 2. Registrar log ANTES de excluir (para manter o nome)
+            await client.query(`INSERT INTO logs_admin (admin_id, acao, descricao, dados_acao, ip)
+             VALUES ($1, $2, $3, $4, $5)`, [
+                admin_id,
+                "excluir_usuario",
+                `Usuario ${usuario.nome_usuario} (${usuario.email}) excluido`,
+                JSON.stringify({
+                    usuario_id,
+                    nome: usuario.nome_usuario,
+                    email: usuario.email
+                }),
+                ip
+            ]);
+            // 3. Excluir usuário (CASCADE remove tudo relacionado)
+            await client.query(`DELETE FROM usuarios WHERE id = $1`, [usuario_id]);
+            console.log(`✅ Usuario ${usuario.nome_usuario} (ID: ${usuario_id}) excluido`);
+        });
+    }
 }
 exports.AdminService = AdminService;
 exports.default = new AdminService();

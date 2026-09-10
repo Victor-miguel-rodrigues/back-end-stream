@@ -33,6 +33,7 @@ export declare class AdminService {
     desmarcarUsuarioPago(usuario_id: number, admin_id: number, ip: string): Promise<void>;
     verificarPermissao(admin_id: number, permissao: string): Promise<boolean>;
     logAdminAction(admin_id: number, acao: string, descricao: string, ip: string, dados_acao?: any): Promise<void>;
+    excluirUsuario(usuario_id: number, admin_id: number, ip: string): Promise<void>;
 }
 declare const _default: AdminService;
 export default _default;

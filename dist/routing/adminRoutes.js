@@ -35,6 +35,8 @@ router.get("/admin/servidores/:id", adminAuth_1.validarTokenAdmin, servidorContr
 router.post("/admin/servidores", adminAuth_1.validarTokenAdmin, servidorController_1.default.criarServidor);
 router.put("/admin/servidores/:id", adminAuth_1.validarTokenAdmin, servidorController_1.default.atualizarServidor);
 router.delete("/admin/servidores/:id", adminAuth_1.validarTokenAdmin, servidorController_1.default.excluirServidor);
+// Excluir usuário
+router.delete("/admin/usuarios/:id", adminAuth_1.validarTokenAdmin, adminController_1.default.excluirUsuario);
 // Logout
 router.post("/admin/logout", adminAuth_1.validarTokenAdmin, adminController_1.default.logout);
 exports.default = router;

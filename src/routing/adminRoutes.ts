@@ -7,6 +7,8 @@ import adminController from "../controller/adminController";
 import { validarTokenAdmin } from "../middlewares/adminAuth";
 import servidorController from "../controller/servidorController";
 
+
+
 const router = Router();
 
 // ============================================
@@ -41,6 +43,9 @@ router.get("/admin/servidores/:id", validarTokenAdmin, servidorController.buscar
 router.post("/admin/servidores", validarTokenAdmin, servidorController.criarServidor);
 router.put("/admin/servidores/:id", validarTokenAdmin, servidorController.atualizarServidor);
 router.delete("/admin/servidores/:id", validarTokenAdmin, servidorController.excluirServidor);
+
+// Excluir usuário
+router.delete("/admin/usuarios/:id", validarTokenAdmin, adminController.excluirUsuario);
 
 // Logout
 router.post("/admin/logout", validarTokenAdmin, adminController.logout);
