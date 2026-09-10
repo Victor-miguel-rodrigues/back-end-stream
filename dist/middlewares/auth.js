@@ -18,7 +18,7 @@ const validarToken = async (req, res, next) => {
         const token = parts[1];
         const result = await (0, connection_1.query)(`SELECT 
                 s.*,
-                u.nome,
+                u.nome_usuario,
                 u.email,
                 u.ativo AS usuario_ativo,
                 p.nome AS perfil_nome
@@ -37,7 +37,7 @@ const validarToken = async (req, res, next) => {
         const reqWithUser = req;
         reqWithUser.usuario = {
             id: sessao.usuario_id,
-            nome: sessao.nome,
+            nome: sessao.nome_usuario, // ← trocado de sessao.nome
             email: sessao.email,
             perfil: sessao.perfil_nome,
             perfil_id: sessao.perfil_id,

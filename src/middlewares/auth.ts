@@ -27,7 +27,7 @@ export const validarToken = async (
         const result = await query(
             `SELECT 
                 s.*,
-                u.nome,
+                u.nome_usuario,
                 u.email,
                 u.ativo AS usuario_ativo,
                 p.nome AS perfil_nome
@@ -51,7 +51,7 @@ export const validarToken = async (
         const reqWithUser = req as RequestWithUser;
         reqWithUser.usuario = {
             id: sessao.usuario_id,
-            nome: sessao.nome,
+            nome: sessao.nome_usuario,   // ← trocado de sessao.nome
             email: sessao.email,
             perfil: sessao.perfil_nome,
             perfil_id: sessao.perfil_id,
