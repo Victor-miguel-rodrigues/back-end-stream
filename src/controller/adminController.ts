@@ -5,7 +5,7 @@
 import { Request, Response } from "express";
 import adminService from "../services/adminService";
 import { RequestWithAdmin } from "../types/admin";
-
+import { query } from "../database/connection";
 
 
 // 🔴 FUNÇÃO AUXILIAR PARA PEGAR IP
@@ -292,33 +292,37 @@ export class AdminController {
         }
     }
 
-    
-    
-    async excluirUsuario(
-      req: Request<{ id: string }>,   // resolve o string | string[]
-      res: Response
-    ): Promise<Response> {
-      try {
-    
-        // Resolve o string | string[] (redundante aqui, mas seguro)
-        const raw = req.params.id;
-        const idStr = Array.isArray(raw) ? raw[0] : raw;
-    
-        // Resolve o string -> number
-        const id = Number(idStr);
-    
-        if (isNaN(id)) {
-          return res.status(400).json({ error: 'ID inválido' });
-        }
-    
-        // ... sua lógica (ex: prisma.user.delete({ where: { id } }))
-    
-        return res.status(200).json({ ok: true });
-      } catch (error) {
-        return res.status(500).json({ error: 'Erro interno' });
-      }
-    }
 
+
+    async excluirUsuario(
+        req: Request<{ id: string }>,
+        res: Response
+        ): Promise<Response> {
+            try {
+                const raw = req.params.id;
+                const idStr = Array.isArray(raw) ? raw[0] : raw;
+                const id = Number(idStr);
+
+                if (isNaN(id)) {
+                return res.status(400).json({ error: 'ID inválido' });
+                }
+
+                // ✅ DELETE de verdade
+                const result = await query(
+                'DELETE FROM usuarios WHERE id = $1 RETURNING id, nome_usuario, email',
+                [id]
+                );
+
+                if (!result || result.rowCount === 0) {
+                return res.status(404).json({ error: 'Usuário não encontrado' });
+                }
+
+                return res.status(200).json({ ok: true, deletado: result.rows[0] });
+            } catch (error) {
+                console.error('Erro ao excluir usuário:', error);
+                return res.status(500).json({ error: 'Erro interno' });
+            }
+    }
 }
 
 export default new AdminController();

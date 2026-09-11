@@ -9,8 +9,7 @@ export declare class AdminController {
     logout(req: Request, res: Response): Promise<Response>;
     excluirUsuario(req: Request<{
         id: string;
-    }>, // resolve o string | string[]
-    res: Response): Promise<Response>;
+    }>, res: Response): Promise<Response>;
 }
 declare const _default: AdminController;
 export default _default;
