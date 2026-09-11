@@ -10,7 +10,7 @@ import { sha256, gerarToken, compararSenha } from "../utils/crypto";
 export class UserCadastroController {
     listar(_req: any, res: any) {
         return res.json({
-            mensage: "Funcionado direitinho",
+            mensage: "Funcionando direitinho",
             status: true,
             dados: [],
         });
@@ -210,20 +210,55 @@ export class UserCadastroController {
 
             console.log("✅ Senha correta!");
 
-            // 4. 🔴 BUSCAR PERFIL COM DATA_VALIDADE
+            // 4. 🔴 BUSCAR PERFIL VÁLIDO (BLOQUEIA SE DATA_VALIDADE JÁ PASSOU)
             const perfilResult = await query(
                 `SELECT up.perfil_id, p.nome, up.data_validade
                  FROM usuario_perfil up
                  JOIN perfis_acesso p ON up.perfil_id = p.id
                  WHERE up.usuario_id = $1 
-                 AND up.ativo = TRUE 
-                 AND (up.data_validade IS NULL OR up.data_validade > NOW())
-                 ORDER BY up.data_inicio DESC
+                   AND up.ativo = TRUE 
+                   AND (up.data_validade IS NULL OR up.data_validade > NOW())
+                 ORDER BY 
+                   up.data_validade NULLS LAST,
+                   up.data_inicio DESC
                  LIMIT 1`,
                 [usuario.id]
             );
 
+            // 🔴 Se não achou perfil válido, pode ser que exista mas expirou
             if (perfilResult.rows.length === 0) {
+                console.log("❌ Usuário sem perfil válido (expirado ou inexistente)");
+
+                // Verifica se ele TEM perfil mas expirou, pra dar mensagem mais clara
+                const expiradoResult = await query(
+                    `SELECT up.data_validade, p.nome
+                     FROM usuario_perfil up
+                     JOIN perfis_acesso p ON up.perfil_id = p.id
+                     WHERE up.usuario_id = $1 
+                       AND up.ativo = TRUE
+                     ORDER BY up.data_inicio DESC
+                     LIMIT 1`,
+                    [usuario.id]
+                );
+
+                if (expiradoResult.rows.length > 0) {
+                    const expirado = expiradoResult.rows[0];
+                    console.log(`❌ Perfil "${expirado.nome}" expirou em ${expirado.data_validade}`);
+
+                    await query(
+                        `INSERT INTO logs_sistema (usuario_id, acao, descricao, ip) 
+                         VALUES ($1, $2, $3, $4)`,
+                        [usuario.id, "login_perfil_expirado", `Perfil expirado em ${expirado.data_validade}`, ip]
+                    );
+
+                    return res.status(403).json({
+                        status: false,
+                        message: "Seu acesso expirou. Renove para continuar.",
+                        codigo: "PERFIL_EXPIRADO",
+                        expirou_em: expirado.data_validade
+                    });
+                }
+
                 return res.status(403).json({
                     status: false,
                     message: "Usuário não possui perfil ativo"
@@ -315,7 +350,7 @@ export class UserCadastroController {
                     perfil: perfil.nome,
                     token: token,
                     expira_em: "7 dias",
-                    data_validade: dataValidade  // 🔴 ADICIONADO
+                    data_validade: dataValidade
                 }
             });
 
@@ -447,7 +482,7 @@ export class UserCadastroController {
     }
 
     // ============================================
-    // VALIDAR TOKEN
+    // VALIDAR TOKEN (AGORA CHECA TAMBÉM data_validade DO PERFIL)
     // ============================================
     async validarToken(req: Request, res: Response) {
         try {
@@ -466,18 +501,48 @@ export class UserCadastroController {
                     u.nome_usuario,
                     u.email,
                     u.ativo AS usuario_ativo,
-                    p.nome AS perfil_nome
+                    p.nome AS perfil_nome,
+                    up.data_validade AS perfil_validade
                  FROM sessoes s
                  JOIN usuarios u ON s.usuario_id = u.id
                  LEFT JOIN perfis_acesso p ON s.perfil_id = p.id
+                 LEFT JOIN usuario_perfil up 
+                    ON up.usuario_id = s.usuario_id 
+                   AND up.perfil_id = s.perfil_id
                  WHERE s.token = $1 
-                 AND s.ativo = TRUE 
-                 AND s.data_expiracao > NOW()
-                 AND u.ativo = TRUE`,
+                   AND s.ativo = TRUE 
+                   AND s.data_expiracao > NOW()
+                   AND u.ativo = TRUE
+                   AND (up.data_validade IS NULL OR up.data_validade > NOW())`,
                 [token]
             );
 
             if (result.rows.length === 0) {
+                // Verifica se era caso de perfil expirado, pra dar mensagem específica
+                const existeToken = await query(
+                    `SELECT s.id, up.data_validade, p.nome AS perfil_nome
+                     FROM sessoes s
+                     LEFT JOIN usuario_perfil up 
+                        ON up.usuario_id = s.usuario_id 
+                       AND up.perfil_id = s.perfil_id
+                     LEFT JOIN perfis_acesso p ON up.perfil_id = p.id
+                     WHERE s.token = $1 AND s.ativo = TRUE`,
+                    [token]
+                );
+
+                if (existeToken.rows.length > 0 && existeToken.rows[0].data_validade) {
+                    const val = existeToken.rows[0].data_validade;
+                    if (new Date(val) <= new Date()) {
+                        return res.status(401).json({
+                            status: false,
+                            valido: false,
+                            codigo: "PERFIL_EXPIRADO",
+                            message: "Seu acesso expirou. Renove para continuar.",
+                            expirou_em: val
+                        });
+                    }
+                }
+
                 return res.status(401).json({
                     status: false,
                     valido: false,
@@ -497,7 +562,8 @@ export class UserCadastroController {
                         email: sessao.email,
                         perfil: sessao.perfil_nome || "Sem perfil"
                     },
-                    expira_em: sessao.data_expiracao
+                    expira_em: sessao.data_expiracao,
+                    perfil_validade: sessao.perfil_validade
                 }
             });
 
@@ -510,149 +576,141 @@ export class UserCadastroController {
         }
     }
 
+    // ============================================
+    // LISTAR FAVORITOS DO USUÁRIO
+    // ============================================
+    async listarFavoritos(req: Request, res: Response) {
+        try {
+            const usuarioId = (req as any).usuario?.id;
+            
+            if (!usuarioId) {
+                return res.status(401).json({
+                    status: false,
+                    message: 'Usuário não autenticado'
+                });
+            }
 
-    
+            const result = await query(
+                `SELECT item_id, item_nome, item_tipo, data_adicao 
+                 FROM favoritos_usuarios 
+                 WHERE usuario_id = $1 
+                 ORDER BY data_adicao DESC`,
+                [usuarioId]
+            );
 
-// ============================================
-// LISTAR FAVORITOS DO USUÁRIO
-// ============================================
-async listarFavoritos(req: Request, res: Response) {
-    try {
-        // Pegar usuário do token (middleware já deve ter colocado)
-        const usuarioId = (req as any).usuario?.id;
-        
-        if (!usuarioId) {
-            return res.status(401).json({
+            return res.json({
+                status: true,
+                dados: result.rows
+            });
+
+        } catch (error) {
+            console.error('Erro ao listar favoritos:', error);
+            return res.status(500).json({
                 status: false,
-                message: 'Usuário não autenticado'
+                message: 'Erro ao listar favoritos'
             });
         }
-
-        const result = await query(
-            `SELECT item_id, item_nome, item_tipo, data_adicao 
-             FROM favoritos_usuarios 
-             WHERE usuario_id = $1 
-             ORDER BY data_adicao DESC`,
-            [usuarioId]
-        );
-
-        return res.json({
-            status: true,
-            dados: result.rows
-        });
-
-    } catch (error) {
-        console.error('Erro ao listar favoritos:', error);
-        return res.status(500).json({
-            status: false,
-            message: 'Erro ao listar favoritos'
-        });
     }
-}
 
-// ============================================
-// ADICIONAR FAVORITO
-// ============================================
-async adicionarFavorito(req: Request, res: Response) {
-    try {
-        const usuarioId = (req as any).usuario?.id;
-        const { item_id, item_nome, item_tipo } = req.body;
+    // ============================================
+    // ADICIONAR FAVORITO
+    // ============================================
+    async adicionarFavorito(req: Request, res: Response) {
+        try {
+            const usuarioId = (req as any).usuario?.id;
+            const { item_id, item_nome, item_tipo } = req.body;
 
-        if (!usuarioId) {
-            return res.status(401).json({
+            if (!usuarioId) {
+                return res.status(401).json({
+                    status: false,
+                    message: 'Usuário não autenticado'
+                });
+            }
+
+            if (!item_id || !item_nome || !item_tipo) {
+                return res.status(400).json({
+                    status: false,
+                    message: 'item_id, item_nome e item_tipo são obrigatórios'
+                });
+            }
+
+            const existente = await query(
+                `SELECT id FROM favoritos_usuarios 
+                 WHERE usuario_id = $1 AND item_id = $2`,
+                [usuarioId, item_id]
+            );
+
+            if (existente.rows.length > 0) {
+                return res.status(409).json({
+                    status: false,
+                    message: 'Item já está nos favoritos'
+                });
+            }
+
+            const result = await query(
+                `INSERT INTO favoritos_usuarios (usuario_id, item_id, item_nome, item_tipo)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING id, item_id, item_nome, item_tipo, data_adicao`,
+                [usuarioId, item_id, item_nome, item_tipo]
+            );
+
+            return res.status(201).json({
+                status: true,
+                message: 'Favorito adicionado com sucesso',
+                dados: result.rows[0]
+            });
+
+        } catch (error) {
+            console.error('Erro ao adicionar favorito:', error);
+            return res.status(500).json({
                 status: false,
-                message: 'Usuário não autenticado'
+                message: 'Erro ao adicionar favorito'
             });
         }
-
-        if (!item_id || !item_nome || !item_tipo) {
-            return res.status(400).json({
-                status: false,
-                message: 'item_id, item_nome e item_tipo são obrigatórios'
-            });
-        }
-
-        // Verificar se já existe
-        const existente = await query(
-            `SELECT id FROM favoritos_usuarios 
-             WHERE usuario_id = $1 AND item_id = $2`,
-            [usuarioId, item_id]
-        );
-
-        if (existente.rows.length > 0) {
-            return res.status(409).json({
-                status: false,
-                message: 'Item já está nos favoritos'
-            });
-        }
-
-        const result = await query(
-            `INSERT INTO favoritos_usuarios (usuario_id, item_id, item_nome, item_tipo)
-             VALUES ($1, $2, $3, $4)
-             RETURNING id, item_id, item_nome, item_tipo, data_adicao`,
-            [usuarioId, item_id, item_nome, item_tipo]
-        );
-
-        return res.status(201).json({
-            status: true,
-            message: 'Favorito adicionado com sucesso',
-            dados: result.rows[0]
-        });
-
-    } catch (error) {
-        console.error('Erro ao adicionar favorito:', error);
-        return res.status(500).json({
-            status: false,
-            message: 'Erro ao adicionar favorito'
-        });
     }
-}
 
-// ============================================
-// REMOVER FAVORITO
-// ============================================
-async removerFavorito(req: Request, res: Response) {
-    try {
-        const usuarioId = (req as any).usuario?.id;
-        const { item_id } = req.params;
+    // ============================================
+    // REMOVER FAVORITO
+    // ============================================
+    async removerFavorito(req: Request, res: Response) {
+        try {
+            const usuarioId = (req as any).usuario?.id;
+            const { item_id } = req.params;
 
-        if (!usuarioId) {
-            return res.status(401).json({
+            if (!usuarioId) {
+                return res.status(401).json({
+                    status: false,
+                    message: 'Usuário não autenticado'
+                });
+            }
+
+            const result = await query(
+                `DELETE FROM favoritos_usuarios 
+                 WHERE usuario_id = $1 AND item_id = $2
+                 RETURNING id`,
+                [usuarioId, item_id]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({
+                    status: false,
+                    message: 'Favorito não encontrado'
+                });
+            }
+
+            return res.json({
+                status: true,
+                message: 'Favorito removido com sucesso'
+            });
+
+        } catch (error) {
+            console.error('Erro ao remover favorito:', error);
+            return res.status(500).json({
                 status: false,
-                message: 'Usuário não autenticado'
+                message: 'Erro ao remover favorito'
             });
         }
-
-        const result = await query(
-            `DELETE FROM favoritos_usuarios 
-             WHERE usuario_id = $1 AND item_id = $2
-             RETURNING id`,
-            [usuarioId, item_id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                status: false,
-                message: 'Favorito não encontrado'
-            });
-        }
-
-        return res.json({
-            status: true,
-            message: 'Favorito removido com sucesso'
-        });
-
-    } catch (error) {
-        console.error('Erro ao remover favorito:', error);
-        return res.status(500).json({
-            status: false,
-            message: 'Erro ao remover favorito'
-        });
     }
-}
-
-
-
 }
 
 export default new UserCadastroController();
