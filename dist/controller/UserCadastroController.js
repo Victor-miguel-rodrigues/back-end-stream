@@ -544,6 +544,46 @@ class UserCadastroController {
             });
         }
     }
+    // ============================================
+    // HEARTBEAT — Atualiza atividade da sessão
+    // ============================================
+    async heartbeat(req, res) {
+        try {
+            const token = req.headers.authorization?.split(' ')[1] || req.body.token;
+            const { reproduzindo } = req.body; // true/false
+            if (!token) {
+                return res.status(400).json({
+                    status: false,
+                    message: "Token não fornecido"
+                });
+            }
+            const result = await (0, connection_1.query)(`UPDATE sessoes 
+             SET ultima_atividade = NOW(),
+                 reproduzindo = COALESCE($2, reproduzindo)
+             WHERE token = $1 
+               AND ativo = TRUE
+               AND data_expiracao > NOW()
+             RETURNING id, ultima_atividade, reproduzindo`, [token, reproduzindo ?? null]);
+            if (result.rows.length === 0) {
+                return res.status(401).json({
+                    status: false,
+                    codigo: "SESSAO_INVALIDA",
+                    message: "Sessão inválida ou expirada"
+                });
+            }
+            return res.json({
+                status: true,
+                dados: result.rows[0]
+            });
+        }
+        catch (error) {
+            console.error("Erro no heartbeat:", error);
+            return res.status(500).json({
+                status: false,
+                message: "Erro interno"
+            });
+        }
+    }
 }
 exports.UserCadastroController = UserCadastroController;
 exports.default = new UserCadastroController();

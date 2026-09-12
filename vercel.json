@@ -17,11 +17,5 @@
         "Access-Control-Allow-Headers": "Content-Type, Authorization"
       }
     }
-  ],
-  "crons": [
-    {
-      "path": "/admin/limpar-inativas",
-      "schedule": "*/5 * * * *"
-    }
   ]
 }

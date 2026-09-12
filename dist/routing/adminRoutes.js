@@ -39,5 +39,8 @@ router.delete("/admin/servidores/:id", adminAuth_1.validarTokenAdmin, servidorCo
 router.delete("/admin/usuarios/:id", adminAuth_1.validarTokenAdmin, adminController_1.default.excluirUsuario);
 // Logout
 router.post("/admin/logout", adminAuth_1.validarTokenAdmin, adminController_1.default.logout);
+// Cron de limpeza
+router.get('/admin/limpar-inativas', adminController_1.default.limparInativas);
+router.post('/admin/limpar-inativas', adminController_1.default.limparInativas);
 exports.default = router;
 //# sourceMappingURL=adminRoutes.js.map

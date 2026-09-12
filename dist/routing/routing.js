@@ -7,6 +7,7 @@ const express_1 = require("express");
 const UserCadastroController_1 = __importDefault(require("../controller/UserCadastroController"));
 const userValidator_1 = require("../validators/userValidator");
 const auth_1 = require("../middlewares/auth");
+const UserCadastroController_2 = __importDefault(require("../controller/UserCadastroController"));
 const router = (0, express_1.Router)();
 // Health check
 router.get("/health", (_req, res) => {
@@ -53,5 +54,6 @@ router.get("/favoritos", auth_1.validarToken, UserCadastroController_1.default.l
 router.post("/favoritos", auth_1.validarToken, UserCadastroController_1.default.adicionarFavorito);
 // Remover favorito
 router.delete("/favoritos/:item_id", auth_1.validarToken, UserCadastroController_1.default.removerFavorito);
+router.post('/heartbeat', UserCadastroController_2.default.heartbeat);
 exports.default = router;
 //# sourceMappingURL=routing.js.map

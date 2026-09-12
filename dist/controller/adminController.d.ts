@@ -10,6 +10,7 @@ export declare class AdminController {
     excluirUsuario(req: Request<{
         id: string;
     }>, res: Response): Promise<Response>;
+    limparInativas(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 }
 declare const _default: AdminController;
 export default _default;

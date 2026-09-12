@@ -9,6 +9,7 @@ export declare class UserCadastroController {
     listarFavoritos(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     adicionarFavorito(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     removerFavorito(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    heartbeat(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 }
 declare const _default: UserCadastroController;
 export default _default;
