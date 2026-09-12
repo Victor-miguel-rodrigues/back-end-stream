@@ -9,6 +9,7 @@ import servidorController from "../controller/servidorController";
 
 
 
+
 const router = Router();
 
 // ============================================
@@ -49,5 +50,9 @@ router.delete("/admin/usuarios/:id", validarTokenAdmin, adminController.excluirU
 
 // Logout
 router.post("/admin/logout", validarTokenAdmin, adminController.logout);
+
+// Cron de limpeza
+router.get('/admin/limpar-inativas', adminController.limparInativas);
+router.post('/admin/limpar-inativas', adminController.limparInativas);
 
 export default router;

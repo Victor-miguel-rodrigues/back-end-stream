@@ -323,6 +323,28 @@ export class AdminController {
                 return res.status(500).json({ error: 'Erro interno' });
             }
     }
+
+    
+    async limparInativas(req: Request, res: Response) {
+        try {
+            const secret = req.headers['x-cron-secret'];
+            if (secret !== process.env.CRON_SECRET) {
+                return res.status(403).json({ status: false, message: "Não autorizado" });
+            }
+    
+            // 👇 Importa a função do arquivo separado
+            const { limparSessoesInativas } = await import('../services/sessaoService');
+            const total = await limparSessoesInativas();
+    
+            return res.json({
+                status: true,
+                sessoes_desativadas: total
+            });
+        } catch (error) {
+            console.error("Erro:", error);
+            return res.status(500).json({ status: false, message: "Erro interno" });
+        }
+    }
 }
 
 export default new AdminController();

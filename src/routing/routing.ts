@@ -2,6 +2,7 @@ import { Router } from "express";
 import authController from "../controller/UserCadastroController";
 import { validarUsuario, validarLogin } from "../validators/userValidator";
 import { validarToken } from "../middlewares/auth";
+import UserCadastroController from "../controller/UserCadastroController";
 
 const router = Router();
 
@@ -58,5 +59,7 @@ router.post("/favoritos", validarToken, authController.adicionarFavorito);
 // Remover favorito
 router.delete("/favoritos/:item_id", validarToken, authController.removerFavorito);
 
+
+router.post('/heartbeat', UserCadastroController.heartbeat);
 
 export default router;
