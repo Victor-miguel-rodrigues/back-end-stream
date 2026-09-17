@@ -10,10 +10,11 @@ const app = express();
 // 🔴 Vercel roda atrás de proxy
 // ============================================
 app.set('trust proxy', 1);
-
+app.use(cors())
 // ============================================
 // CORS - aceita qualquer projeto .vercel.app + localhost
 // ============================================
+/*
 app.use(cors({
     origin: (origin, callback) => {
         // ✅ Permite requests sem origin (curl, Postman, apps mobile, server-to-server)
@@ -39,7 +40,7 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-cron-secret'],
     exposedHeaders: ['Authorization'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
-}));
+})); */
 
 // ============================================
 // BODY PARSERS
