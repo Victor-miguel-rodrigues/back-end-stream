@@ -2,6 +2,39 @@
 // ============================================
 // ADMIN SERVICE - 1FN, 2FN, 3FN
 // ============================================
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminService = void 0;
 const connection_1 = require("../database/connection");
@@ -252,19 +285,31 @@ class AdminService {
              VALUES ($1, $2, $3, $4, $5)`, [admin_id, acao, descricao, dados_acao ? JSON.stringify(dados_acao) : null, ip]);
     }
     // ============================================
+    // 🆕 REGISTRAR LOG (usado pelo adminController)
+    // ============================================
+    async registrarLog(dados) {
+        await (0, connection_1.query)(`INSERT INTO logs_admin (admin_id, acao, descricao, dados_acao, ip, user_agent)
+             VALUES ($1, $2, $3, $4, $5, $6)`, [
+            dados.admin_id ?? null,
+            dados.acao,
+            dados.descricao ?? null,
+            dados.dados ? JSON.stringify(dados.dados) : null,
+            dados.ip ?? null,
+            dados.user_agent ?? null
+        ]);
+    }
+    // ============================================
     // EXCLUIR USUÁRIO
     // ============================================
     async excluirUsuario(usuario_id, admin_id, ip) {
         await (0, connection_1.transaction)(async (client) => {
-            // 1. Buscar dados do usuário antes de excluir
             const userResult = await client.query(`SELECT id, nome_usuario, email FROM usuarios WHERE id = $1`, [usuario_id]);
             if (userResult.rows.length === 0) {
                 throw new admin_1.AppError("Usuario nao encontrado", 404);
             }
             const usuario = userResult.rows[0];
-            // 2. Registrar log ANTES de excluir (para manter o nome)
             await client.query(`INSERT INTO logs_admin (admin_id, acao, descricao, dados_acao, ip)
-             VALUES ($1, $2, $3, $4, $5)`, [
+                 VALUES ($1, $2, $3, $4, $5)`, [
                 admin_id,
                 "excluir_usuario",
                 `Usuario ${usuario.nome_usuario} (${usuario.email}) excluido`,
@@ -275,10 +320,309 @@ class AdminService {
                 }),
                 ip
             ]);
-            // 3. Excluir usuário (CASCADE remove tudo relacionado)
             await client.query(`DELETE FROM usuarios WHERE id = $1`, [usuario_id]);
             console.log(`✅ Usuario ${usuario.nome_usuario} (ID: ${usuario_id}) excluido`);
         });
+    }
+    // ============================================
+    // 🆕 PERMISSOES - LISTAR DISPONIVEIS
+    // ============================================
+    async listarPermissoes() {
+        const result = await (0, connection_1.query)(`SELECT id, nome, descricao 
+             FROM permissoes_admin 
+             WHERE ativo = TRUE 
+             ORDER BY id`);
+        return result.rows;
+    }
+    // ============================================
+    // 🆕 BUSCAR PERMISSOES DE UM ADMIN
+    // ============================================
+    async getPermissoesAdmin(admin_id) {
+        const result = await (0, connection_1.query)(`SELECT p.nome 
+             FROM admin_permissoes ap
+             JOIN permissoes_admin p ON p.id = ap.permissao_id
+             WHERE ap.admin_id = $1 AND ap.ativo = TRUE AND p.ativo = TRUE`, [admin_id]);
+        return result.rows.map((r) => r.nome);
+    }
+    // ============================================
+    // 🆕 DEFINIR PERMISSOES DE UM ADMIN
+    // ============================================
+    async setPermissoesAdmin(admin_id, permissoes) {
+        await (0, connection_1.transaction)(async (client) => {
+            await client.query(`UPDATE admin_permissoes 
+                 SET ativo = FALSE 
+                 WHERE admin_id = $1`, [admin_id]);
+            if (!permissoes || permissoes.length === 0)
+                return;
+            for (const nomePermissao of permissoes) {
+                await client.query(`INSERT INTO admin_permissoes (admin_id, permissao_id, ativo)
+                     VALUES ($1, (SELECT id FROM permissoes_admin WHERE nome = $2), TRUE)
+                     ON CONFLICT (admin_id, permissao_id) 
+                     DO UPDATE SET ativo = TRUE`, [admin_id, nomePermissao]);
+            }
+        });
+    }
+    // ============================================
+    // 🆕 ADMINS - LISTAR (AJUSTADO: data_criacao)
+    // ============================================
+    async listarAdmins() {
+        const result = await (0, connection_1.query)(`SELECT 
+                id AS admin_id,
+                nome,
+                email,
+                ativo,
+                data_criacao,
+                ultimo_login,
+                ultimo_ip
+             FROM administradores
+             ORDER BY id`);
+        const admins = await Promise.all(result.rows.map(async (admin) => ({
+            ...admin,
+            permissoes: await this.getPermissoesAdmin(admin.admin_id)
+        })));
+        return admins;
+    }
+    // ============================================
+    // 🆕 ADMINS - BUSCAR POR ID (AJUSTADO: data_criacao)
+    // ============================================
+    async buscarAdmin(admin_id) {
+        const result = await (0, connection_1.query)(`SELECT 
+                id AS admin_id,
+                nome,
+                email,
+                ativo,
+                data_criacao,
+                ultimo_login,
+                ultimo_ip
+             FROM administradores 
+             WHERE id = $1`, [admin_id]);
+        if (result.rows.length === 0)
+            return null;
+        const admin = result.rows[0];
+        admin.permissoes = await this.getPermissoesAdmin(admin_id);
+        return admin;
+    }
+    // ============================================
+    // 🆕 ADMINS - CRIAR
+    // ============================================
+    async criarAdmin(dados) {
+        const { nome, email, senha, permissoes } = dados;
+        const existe = await (0, connection_1.query)(`SELECT id FROM administradores WHERE email = $1`, [email]);
+        if (existe.rows.length > 0) {
+            throw new admin_1.AppError("Email ja cadastrado", 400);
+        }
+        const { hashSenha } = await Promise.resolve().then(() => __importStar(require("../utils/crypto")));
+        const senha_hash = hashSenha(senha);
+        const result = await (0, connection_1.query)(`INSERT INTO administradores (nome, email, senha_hash, ativo)
+             VALUES ($1, $2, $3, TRUE)
+             RETURNING id AS admin_id, nome, email, ativo`, [nome, email, senha_hash]);
+        const admin = result.rows[0];
+        if (permissoes && permissoes.length > 0) {
+            await this.setPermissoesAdmin(admin.admin_id, permissoes);
+        }
+        admin.permissoes = permissoes || [];
+        return admin;
+    }
+    // ============================================
+    // 🆕 ADMINS - ATUALIZAR
+    // ============================================
+    async atualizarAdmin(admin_id, dados) {
+        const { nome, email, senha, permissoes, ativo } = dados;
+        const campos = [];
+        const valores = [];
+        let idx = 1;
+        if (nome !== undefined) {
+            campos.push(`nome = $${idx++}`);
+            valores.push(nome);
+        }
+        if (email !== undefined) {
+            campos.push(`email = $${idx++}`);
+            valores.push(email);
+        }
+        if (ativo !== undefined) {
+            campos.push(`ativo = $${idx++}`);
+            valores.push(ativo);
+        }
+        if (senha) {
+            const { hashSenha } = await Promise.resolve().then(() => __importStar(require("../utils/crypto")));
+            campos.push(`senha_hash = $${idx++}`);
+            valores.push(hashSenha(senha));
+        }
+        if (campos.length > 0) {
+            valores.push(admin_id);
+            await (0, connection_1.query)(`UPDATE administradores SET ${campos.join(', ')} WHERE id = $${idx}`, valores);
+        }
+        if (permissoes !== undefined) {
+            await this.setPermissoesAdmin(admin_id, permissoes);
+        }
+        return this.buscarAdmin(admin_id);
+    }
+    // ============================================
+    // 🆕 ADMINS - EXCLUIR
+    // ============================================
+    async excluirAdmin(admin_id) {
+        const result = await (0, connection_1.query)(`DELETE FROM administradores WHERE id = $1 RETURNING id`, [admin_id]);
+        return (result.rowCount ?? 0) > 0;
+    }
+    // ============================================
+    // 🆕 LOGS DO SISTEMA - LISTAR (AJUSTADO: data_log)
+    // ============================================
+    async listarLogs(opts) {
+        const page = opts.page || 1;
+        const limit = Math.min(opts.limit || 50, 200);
+        const offset = (page - 1) * limit;
+        const where = [];
+        const params = [];
+        let idx = 1;
+        if (opts.admin_id) {
+            where.push(`l.admin_id = $${idx++}`);
+            params.push(opts.admin_id);
+        }
+        if (opts.acao) {
+            where.push(`l.acao = $${idx++}`);
+            params.push(opts.acao);
+        }
+        if (opts.desde) {
+            where.push(`l.data_log >= $${idx++}`);
+            params.push(opts.desde);
+        }
+        if (opts.ate) {
+            where.push(`l.data_log <= $${idx++}`);
+            params.push(opts.ate);
+        }
+        const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+        const countResult = await (0, connection_1.query)(`SELECT COUNT(*) FROM logs_admin l ${whereSql}`, params);
+        const total = parseInt(countResult.rows[0].count, 10);
+        params.push(limit, offset);
+        const result = await (0, connection_1.query)(`SELECT 
+                l.id,
+                l.admin_id,
+                a.nome AS admin_nome,
+                a.email AS admin_email,
+                l.acao,
+                l.descricao,
+                l.dados_acao,
+                l.ip,
+                l.data_log
+             FROM logs_admin l
+             LEFT JOIN administradores a ON a.id = l.admin_id
+             ${whereSql}
+             ORDER BY l.data_log DESC
+             LIMIT $${idx++} OFFSET $${idx++}`, params);
+        return {
+            dados: result.rows,
+            total,
+            total_paginas: Math.ceil(total / limit)
+        };
+    }
+    // ============================================
+    // 🆕 HISTORICO DE LOGINS DOS USUARIOS
+    // ============================================
+    async listarLogins(opts) {
+        const page = opts.page || 1;
+        const limit = Math.min(opts.limit || 50, 200);
+        const offset = (page - 1) * limit;
+        const where = [];
+        const params = [];
+        let idx = 1;
+        if (opts.usuario_id) {
+            where.push(`h.usuario_id = $${idx++}`);
+            params.push(opts.usuario_id);
+        }
+        if (opts.busca) {
+            where.push(`(u.nome_usuario ILIKE $${idx} OR u.email ILIKE $${idx} OR h.ip ILIKE $${idx})`);
+            params.push(`%${opts.busca}%`);
+            idx++;
+        }
+        const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+        const countResult = await (0, connection_1.query)(`SELECT COUNT(*) FROM historico_login h
+             JOIN usuarios u ON u.id = h.usuario_id
+             ${whereSql}`, params);
+        const total = parseInt(countResult.rows[0].count, 10);
+        params.push(limit, offset);
+        const result = await (0, connection_1.query)(`SELECT 
+                h.id,
+                h.usuario_id,
+                u.nome_usuario,
+                u.email,
+                h.ip,
+                h.user_agent,
+                h.sucesso,
+                h.data_login
+             FROM historico_login h
+             JOIN usuarios u ON u.id = h.usuario_id
+             ${whereSql}
+             ORDER BY h.data_login DESC
+             LIMIT $${idx++} OFFSET $${idx++}`, params);
+        return {
+            dados: result.rows,
+            total,
+            total_paginas: Math.ceil(total / limit)
+        };
+    }
+    // ============================================
+    // 🆕 SESSOES ADMIN - LISTAR
+    // ============================================
+    async listarSessoesAdmin(opts = {}) {
+        const page = opts.page || 1;
+        const limit = Math.min(opts.limit || 50, 200);
+        const offset = (page - 1) * limit;
+        const where = opts.apenas_ativas
+            ? `WHERE s.ativo = TRUE AND s.data_expiracao > NOW()`
+            : '';
+        const countResult = await (0, connection_1.query)(`SELECT COUNT(*) FROM sessoes_admin s ${where}`, []);
+        const total = parseInt(countResult.rows[0].count, 10);
+        const result = await (0, connection_1.query)(`SELECT 
+                s.id,
+                s.admin_id,
+                a.nome AS admin_nome,
+                a.email AS admin_email,
+                s.ip,
+                s.user_agent,
+                s.ativo,
+                s.data_criacao AS criado_em,
+                s.data_expiracao AS expira_em,
+                (s.data_expiracao < NOW()) AS expirada
+             FROM sessoes_admin s
+             JOIN administradores a ON a.id = s.admin_id
+             ${where}
+             ORDER BY s.data_criacao DESC
+             LIMIT $1 OFFSET $2`, [limit, offset]);
+        return {
+            dados: result.rows,
+            total,
+            total_paginas: Math.ceil(total / limit)
+        };
+    }
+    // ============================================
+    // 🆕 SESSOES ADMIN - REVOGAR UMA
+    // ============================================
+    async revogarSessaoAdmin(sessao_id) {
+        const result = await (0, connection_1.query)(`UPDATE sessoes_admin 
+             SET ativo = FALSE 
+             WHERE id = $1 
+             RETURNING id`, [sessao_id]);
+        return (result.rowCount ?? 0) > 0;
+    }
+    // ============================================
+    // 🆕 SESSOES ADMIN - REVOGAR TODAS DE UM ADMIN
+    // ============================================
+    async revogarSessoesAdmin(admin_id) {
+        const result = await (0, connection_1.query)(`UPDATE sessoes_admin 
+             SET ativo = FALSE 
+             WHERE admin_id = $1 AND ativo = TRUE 
+             RETURNING id`, [admin_id]);
+        return result.rowCount ?? 0;
+    }
+    // ============================================
+    // 🆕 LIMPAR SESSOES INATIVAS (admin)
+    // ============================================
+    async limparSessoesInativasAdmin() {
+        const result = await (0, connection_1.query)(`UPDATE sessoes_admin 
+             SET ativo = FALSE 
+             WHERE ativo = TRUE AND data_expiracao < NOW()
+             RETURNING id`);
+        return result.rowCount ?? 0;
     }
 }
 exports.AdminService = AdminService;

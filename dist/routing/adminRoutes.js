@@ -42,5 +42,35 @@ router.post("/admin/logout", adminAuth_1.validarTokenAdmin, adminController_1.de
 // Cron de limpeza
 router.get('/admin/limpar-inativas', adminController_1.default.limparInativas);
 router.post('/admin/limpar-inativas', adminController_1.default.limparInativas);
+// ============================================
+// 🆕 PERMISSOES
+// ============================================
+router.get("/admin/permissoes", adminAuth_1.validarTokenAdmin, adminController_1.default.listarPermissoes);
+// ============================================
+// 🆕 ADMINS - CRUD
+// ============================================
+router.get("/admin/admins", adminAuth_1.validarTokenAdmin, adminController_1.default.listarAdmins);
+router.get("/admin/admins/:id", adminAuth_1.validarTokenAdmin, adminController_1.default.buscarAdmin);
+router.post("/admin/admins", adminAuth_1.validarTokenAdmin, adminController_1.default.criarAdmin);
+router.put("/admin/admins/:id", adminAuth_1.validarTokenAdmin, adminController_1.default.atualizarAdmin);
+router.delete("/admin/admins/:id", adminAuth_1.validarTokenAdmin, adminController_1.default.excluirAdmin);
+// ============================================
+// 🆕 LOGS DO SISTEMA
+// ============================================
+router.get("/admin/logs", adminAuth_1.validarTokenAdmin, adminController_1.default.listarLogs);
+// ============================================
+// 🆕 HISTORICO DE LOGINS DOS USUARIOS
+// ============================================
+router.get("/admin/logins", adminAuth_1.validarTokenAdmin, adminController_1.default.listarLogins);
+// ============================================
+// 🆕 SESSOES ADMIN
+// ============================================
+router.get("/admin/sessoes", adminAuth_1.validarTokenAdmin, adminController_1.default.listarSessoes);
+router.delete("/admin/sessoes/:id", adminAuth_1.validarTokenAdmin, adminController_1.default.revogarSessao);
+router.delete("/admin/admins/:id/sessoes", adminAuth_1.validarTokenAdmin, adminController_1.default.revogarSessoesAdmin);
+// ============================================
+// 🆕 LIMPAR SESSOES INATIVAS (autenticado)
+// ============================================
+router.post("/admin/limpar-inativas-admin", adminAuth_1.validarTokenAdmin, adminController_1.default.limparSessoesInativasAdmin);
 exports.default = router;
 //# sourceMappingURL=adminRoutes.js.map

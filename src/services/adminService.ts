@@ -374,50 +374,504 @@ export class AdminService {
         );
     }
 
-
     // ============================================
-// EXCLUIR USUÁRIO
-// ============================================
-async excluirUsuario(usuario_id: number, admin_id: number, ip: string): Promise<void> {
-    await transaction(async (client: PoolClient) => {
-        // 1. Buscar dados do usuário antes de excluir
-        const userResult = await client.query(
-            `SELECT id, nome_usuario, email FROM usuarios WHERE id = $1`,
-            [usuario_id]
-        );
-
-        if (userResult.rows.length === 0) {
-            throw new AppError("Usuario nao encontrado", 404);
-        }
-
-        const usuario = userResult.rows[0];
-
-        // 2. Registrar log ANTES de excluir (para manter o nome)
-        await client.query(
-            `INSERT INTO logs_admin (admin_id, acao, descricao, dados_acao, ip)
-             VALUES ($1, $2, $3, $4, $5)`,
+    // 🆕 REGISTRAR LOG (usado pelo adminController)
+    // ============================================
+    async registrarLog(dados: {
+        admin_id?: number;
+        usuario_id?: number;
+        acao: string;
+        descricao?: string;
+        ip?: string;
+        user_agent?: string;
+        dados?: any;
+    }): Promise<void> {
+        await query(
+            `INSERT INTO logs_admin (admin_id, acao, descricao, dados_acao, ip, user_agent)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
             [
-                admin_id,
-                "excluir_usuario",
-                `Usuario ${usuario.nome_usuario} (${usuario.email}) excluido`,
-                JSON.stringify({
-                    usuario_id,
-                    nome: usuario.nome_usuario,
-                    email: usuario.email
-                }),
-                ip
+                dados.admin_id ?? null,
+                dados.acao,
+                dados.descricao ?? null,
+                dados.dados ? JSON.stringify(dados.dados) : null,
+                dados.ip ?? null,
+                dados.user_agent ?? null
             ]
         );
+    }
 
-        // 3. Excluir usuário (CASCADE remove tudo relacionado)
-        await client.query(
-            `DELETE FROM usuarios WHERE id = $1`,
-            [usuario_id]
+    // ============================================
+    // EXCLUIR USUÁRIO
+    // ============================================
+    async excluirUsuario(usuario_id: number, admin_id: number, ip: string): Promise<void> {
+        await transaction(async (client: PoolClient) => {
+            const userResult = await client.query(
+                `SELECT id, nome_usuario, email FROM usuarios WHERE id = $1`,
+                [usuario_id]
+            );
+
+            if (userResult.rows.length === 0) {
+                throw new AppError("Usuario nao encontrado", 404);
+            }
+
+            const usuario = userResult.rows[0];
+
+            await client.query(
+                `INSERT INTO logs_admin (admin_id, acao, descricao, dados_acao, ip)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [
+                    admin_id,
+                    "excluir_usuario",
+                    `Usuario ${usuario.nome_usuario} (${usuario.email}) excluido`,
+                    JSON.stringify({
+                        usuario_id,
+                        nome: usuario.nome_usuario,
+                        email: usuario.email
+                    }),
+                    ip
+                ]
+            );
+
+            await client.query(
+                `DELETE FROM usuarios WHERE id = $1`,
+                [usuario_id]
+            );
+
+            console.log(`✅ Usuario ${usuario.nome_usuario} (ID: ${usuario_id}) excluido`);
+        });
+    }
+
+    // ============================================
+    // 🆕 PERMISSOES - LISTAR DISPONIVEIS
+    // ============================================
+    async listarPermissoes(): Promise<any[]> {
+        const result = await query(
+            `SELECT id, nome, descricao 
+             FROM permissoes_admin 
+             WHERE ativo = TRUE 
+             ORDER BY id`
+        );
+        return result.rows;
+    }
+
+    // ============================================
+    // 🆕 BUSCAR PERMISSOES DE UM ADMIN
+    // ============================================
+    async getPermissoesAdmin(admin_id: number): Promise<string[]> {
+        const result = await query(
+            `SELECT p.nome 
+             FROM admin_permissoes ap
+             JOIN permissoes_admin p ON p.id = ap.permissao_id
+             WHERE ap.admin_id = $1 AND ap.ativo = TRUE AND p.ativo = TRUE`,
+            [admin_id]
+        );
+        return result.rows.map((r: any) => r.nome);
+    }
+
+    // ============================================
+    // 🆕 DEFINIR PERMISSOES DE UM ADMIN
+    // ============================================
+    async setPermissoesAdmin(admin_id: number, permissoes: string[]): Promise<void> {
+        await transaction(async (client: PoolClient) => {
+            await client.query(
+                `UPDATE admin_permissoes 
+                 SET ativo = FALSE 
+                 WHERE admin_id = $1`,
+                [admin_id]
+            );
+
+            if (!permissoes || permissoes.length === 0) return;
+
+            for (const nomePermissao of permissoes) {
+                await client.query(
+                    `INSERT INTO admin_permissoes (admin_id, permissao_id, ativo)
+                     VALUES ($1, (SELECT id FROM permissoes_admin WHERE nome = $2), TRUE)
+                     ON CONFLICT (admin_id, permissao_id) 
+                     DO UPDATE SET ativo = TRUE`,
+                    [admin_id, nomePermissao]
+                );
+            }
+        });
+    }
+
+    // ============================================
+    // 🆕 ADMINS - LISTAR (AJUSTADO: data_criacao)
+    // ============================================
+    async listarAdmins(): Promise<any[]> {
+        const result = await query(
+            `SELECT 
+                id AS admin_id,
+                nome,
+                email,
+                ativo,
+                data_criacao,
+                ultimo_login,
+                ultimo_ip
+             FROM administradores
+             ORDER BY id`
         );
 
-        console.log(`✅ Usuario ${usuario.nome_usuario} (ID: ${usuario_id}) excluido`);
-    });
-}
+        const admins = await Promise.all(
+            result.rows.map(async (admin: any) => ({
+                ...admin,
+                permissoes: await this.getPermissoesAdmin(admin.admin_id)
+            }))
+        );
+
+        return admins;
+    }
+
+    // ============================================
+    // 🆕 ADMINS - BUSCAR POR ID (AJUSTADO: data_criacao)
+    // ============================================
+    async buscarAdmin(admin_id: number): Promise<any | null> {
+        const result = await query(
+            `SELECT 
+                id AS admin_id,
+                nome,
+                email,
+                ativo,
+                data_criacao,
+                ultimo_login,
+                ultimo_ip
+             FROM administradores 
+             WHERE id = $1`,
+            [admin_id]
+        );
+
+        if (result.rows.length === 0) return null;
+
+        const admin = result.rows[0];
+        admin.permissoes = await this.getPermissoesAdmin(admin_id);
+        return admin;
+    }
+
+    // ============================================
+    // 🆕 ADMINS - CRIAR
+    // ============================================
+    async criarAdmin(dados: {
+        nome: string;
+        email: string;
+        senha: string;
+        permissoes?: string[];
+    }): Promise<any> {
+        const { nome, email, senha, permissoes } = dados;
+
+        const existe = await query(
+            `SELECT id FROM administradores WHERE email = $1`,
+            [email]
+        );
+
+        if (existe.rows.length > 0) {
+            throw new AppError("Email ja cadastrado", 400);
+        }
+
+        const { hashSenha } = await import("../utils/crypto");
+        const senha_hash = hashSenha(senha);
+
+        const result = await query(
+            `INSERT INTO administradores (nome, email, senha_hash, ativo)
+             VALUES ($1, $2, $3, TRUE)
+             RETURNING id AS admin_id, nome, email, ativo`,
+            [nome, email, senha_hash]
+        );
+
+        const admin = result.rows[0];
+
+        if (permissoes && permissoes.length > 0) {
+            await this.setPermissoesAdmin(admin.admin_id, permissoes);
+        }
+
+        admin.permissoes = permissoes || [];
+        return admin;
+    }
+
+    // ============================================
+    // 🆕 ADMINS - ATUALIZAR
+    // ============================================
+    async atualizarAdmin(
+        admin_id: number,
+        dados: {
+            nome?: string;
+            email?: string;
+            senha?: string;
+            permissoes?: string[];
+            ativo?: boolean;
+        }
+    ): Promise<any> {
+        const { nome, email, senha, permissoes, ativo } = dados;
+
+        const campos: string[] = [];
+        const valores: any[] = [];
+        let idx = 1;
+
+        if (nome !== undefined) {
+            campos.push(`nome = $${idx++}`);
+            valores.push(nome);
+        }
+        if (email !== undefined) {
+            campos.push(`email = $${idx++}`);
+            valores.push(email);
+        }
+        if (ativo !== undefined) {
+            campos.push(`ativo = $${idx++}`);
+            valores.push(ativo);
+        }
+        if (senha) {
+            const { hashSenha } = await import("../utils/crypto");
+            campos.push(`senha_hash = $${idx++}`);
+            valores.push(hashSenha(senha));
+        }
+
+        if (campos.length > 0) {
+            valores.push(admin_id);
+            await query(
+                `UPDATE administradores SET ${campos.join(', ')} WHERE id = $${idx}`,
+                valores
+            );
+        }
+
+        if (permissoes !== undefined) {
+            await this.setPermissoesAdmin(admin_id, permissoes);
+        }
+
+        return this.buscarAdmin(admin_id);
+    }
+
+    // ============================================
+    // 🆕 ADMINS - EXCLUIR
+    // ============================================
+    async excluirAdmin(admin_id: number): Promise<boolean> {
+        const result = await query(
+            `DELETE FROM administradores WHERE id = $1 RETURNING id`,
+            [admin_id]
+        );
+        return (result.rowCount ?? 0) > 0;
+    }
+
+    // ============================================
+    // 🆕 LOGS DO SISTEMA - LISTAR (AJUSTADO: data_log)
+    // ============================================
+    async listarLogs(opts: {
+        page?: number;
+        limit?: number;
+        admin_id?: number;
+        acao?: string;
+        desde?: string;
+        ate?: string;
+    }): Promise<{ dados: any[]; total: number; total_paginas: number }> {
+        const page = opts.page || 1;
+        const limit = Math.min(opts.limit || 50, 200);
+        const offset = (page - 1) * limit;
+
+        const where: string[] = [];
+        const params: any[] = [];
+        let idx = 1;
+
+        if (opts.admin_id) {
+            where.push(`l.admin_id = $${idx++}`);
+            params.push(opts.admin_id);
+        }
+        if (opts.acao) {
+            where.push(`l.acao = $${idx++}`);
+            params.push(opts.acao);
+        }
+        if (opts.desde) {
+            where.push(`l.data_log >= $${idx++}`);
+            params.push(opts.desde);
+        }
+        if (opts.ate) {
+            where.push(`l.data_log <= $${idx++}`);
+            params.push(opts.ate);
+        }
+
+        const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+
+        const countResult = await query(
+            `SELECT COUNT(*) FROM logs_admin l ${whereSql}`,
+            params
+        );
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        params.push(limit, offset);
+        const result = await query(
+            `SELECT 
+                l.id,
+                l.admin_id,
+                a.nome AS admin_nome,
+                a.email AS admin_email,
+                l.acao,
+                l.descricao,
+                l.dados_acao,
+                l.ip,
+                l.data_log
+             FROM logs_admin l
+             LEFT JOIN administradores a ON a.id = l.admin_id
+             ${whereSql}
+             ORDER BY l.data_log DESC
+             LIMIT $${idx++} OFFSET $${idx++}`,
+            params
+        );
+
+        return {
+            dados: result.rows,
+            total,
+            total_paginas: Math.ceil(total / limit)
+        };
+    }
+
+    // ============================================
+    // 🆕 HISTORICO DE LOGINS DOS USUARIOS
+    // ============================================
+    async listarLogins(opts: {
+        page?: number;
+        limit?: number;
+        usuario_id?: number;
+        busca?: string;
+    }): Promise<{ dados: any[]; total: number; total_paginas: number }> {
+        const page = opts.page || 1;
+        const limit = Math.min(opts.limit || 50, 200);
+        const offset = (page - 1) * limit;
+
+        const where: string[] = [];
+        const params: any[] = [];
+        let idx = 1;
+
+        if (opts.usuario_id) {
+            where.push(`h.usuario_id = $${idx++}`);
+            params.push(opts.usuario_id);
+        }
+        if (opts.busca) {
+            where.push(`(u.nome_usuario ILIKE $${idx} OR u.email ILIKE $${idx} OR h.ip ILIKE $${idx})`);
+            params.push(`%${opts.busca}%`);
+            idx++;
+        }
+
+        const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+
+        const countResult = await query(
+            `SELECT COUNT(*) FROM historico_login h
+             JOIN usuarios u ON u.id = h.usuario_id
+             ${whereSql}`,
+            params
+        );
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        params.push(limit, offset);
+        const result = await query(
+            `SELECT 
+                h.id,
+                h.usuario_id,
+                u.nome_usuario,
+                u.email,
+                h.ip,
+                h.user_agent,
+                h.sucesso,
+                h.data_login
+             FROM historico_login h
+             JOIN usuarios u ON u.id = h.usuario_id
+             ${whereSql}
+             ORDER BY h.data_login DESC
+             LIMIT $${idx++} OFFSET $${idx++}`,
+            params
+        );
+
+        return {
+            dados: result.rows,
+            total,
+            total_paginas: Math.ceil(total / limit)
+        };
+    }
+
+    // ============================================
+    // 🆕 SESSOES ADMIN - LISTAR
+    // ============================================
+    async listarSessoesAdmin(opts: {
+        page?: number;
+        limit?: number;
+        apenas_ativas?: boolean;
+    } = {}): Promise<{ dados: any[]; total: number; total_paginas: number }> {
+        const page = opts.page || 1;
+        const limit = Math.min(opts.limit || 50, 200);
+        const offset = (page - 1) * limit;
+
+        const where = opts.apenas_ativas
+            ? `WHERE s.ativo = TRUE AND s.data_expiracao > NOW()`
+            : '';
+
+        const countResult = await query(
+            `SELECT COUNT(*) FROM sessoes_admin s ${where}`,
+            []
+        );
+        const total = parseInt(countResult.rows[0].count, 10);
+
+        const result = await query(
+            `SELECT 
+                s.id,
+                s.admin_id,
+                a.nome AS admin_nome,
+                a.email AS admin_email,
+                s.ip,
+                s.user_agent,
+                s.ativo,
+                s.data_criacao AS criado_em,
+                s.data_expiracao AS expira_em,
+                (s.data_expiracao < NOW()) AS expirada
+             FROM sessoes_admin s
+             JOIN administradores a ON a.id = s.admin_id
+             ${where}
+             ORDER BY s.data_criacao DESC
+             LIMIT $1 OFFSET $2`,
+            [limit, offset]
+        );
+
+        return {
+            dados: result.rows,
+            total,
+            total_paginas: Math.ceil(total / limit)
+        };
+    }
+
+    // ============================================
+    // 🆕 SESSOES ADMIN - REVOGAR UMA
+    // ============================================
+    async revogarSessaoAdmin(sessao_id: number): Promise<boolean> {
+        const result = await query(
+            `UPDATE sessoes_admin 
+             SET ativo = FALSE 
+             WHERE id = $1 
+             RETURNING id`,
+            [sessao_id]
+        );
+        return (result.rowCount ?? 0) > 0;
+    }
+
+    // ============================================
+    // 🆕 SESSOES ADMIN - REVOGAR TODAS DE UM ADMIN
+    // ============================================
+    async revogarSessoesAdmin(admin_id: number): Promise<number> {
+        const result = await query(
+            `UPDATE sessoes_admin 
+             SET ativo = FALSE 
+             WHERE admin_id = $1 AND ativo = TRUE 
+             RETURNING id`,
+            [admin_id]
+        );
+        return result.rowCount ?? 0;
+    }
+
+    // ============================================
+    // 🆕 LIMPAR SESSOES INATIVAS (admin)
+    // ============================================
+    async limparSessoesInativasAdmin(): Promise<number> {
+        const result = await query(
+            `UPDATE sessoes_admin 
+             SET ativo = FALSE 
+             WHERE ativo = TRUE AND data_expiracao < NOW()
+             RETURNING id`
+        );
+        return result.rowCount ?? 0;
+    }
 }
 
 export default new AdminService();

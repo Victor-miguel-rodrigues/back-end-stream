@@ -1,5 +1,5 @@
 // ============================================
-// ADMIN CONTROLLER - CORRIGIDO
+// ADMIN CONTROLLER - CORRIGIDO + NOVOS ENDPOINTS
 // ============================================
 
 import { Request, Response } from "express";
@@ -343,6 +343,604 @@ export class AdminController {
         } catch (error) {
             console.error("Erro:", error);
             return res.status(500).json({ status: false, message: "Erro interno" });
+        }
+    }
+
+    // ============================================
+    // 🆕 PERMISSÕES - LISTAR DISPONÍVEIS
+    // ============================================
+    async listarPermissoes(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const permissoes = await adminService.listarPermissoes();
+
+            return res.json({
+                status: true,
+                dados: permissoes
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao listar permissoes"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 ADMINS - LISTAR
+    // ============================================
+    async listarAdmins(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'gerenciar_admins');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para gerenciar admins"
+                });
+            }
+
+            const admins = await adminService.listarAdmins();
+
+            return res.json({
+                status: true,
+                dados: admins
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao listar admins"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 ADMINS - BUSCAR POR ID
+    // ============================================
+    async buscarAdmin(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+            const id = getParamId(req);
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'gerenciar_admins');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para gerenciar admins"
+                });
+            }
+
+            const admin = await adminService.buscarAdmin(id);
+
+            if (!admin) {
+                return res.status(404).json({
+                    status: false,
+                    message: "Admin nao encontrado"
+                });
+            }
+
+            return res.json({
+                status: true,
+                dados: admin
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao buscar admin"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 ADMINS - CRIAR
+    // ============================================
+    async criarAdmin(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+            const ip = getClientIp(req);
+            const userAgent = req.headers["user-agent"] || "";
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'gerenciar_admins');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para gerenciar admins"
+                });
+            }
+
+            const { nome, email, senha, permissoes } = req.body;
+
+            if (!nome || !email || !senha) {
+                return res.status(400).json({
+                    status: false,
+                    message: "Nome, email e senha sao obrigatorios"
+                });
+            }
+
+            const admin = await adminService.criarAdmin({ nome, email, senha, permissoes });
+
+            // Registra log
+            try {
+                await adminService.registrarLog({
+                    admin_id: adminId,
+                    acao: 'criar_admin',
+                    descricao: `Admin criado: ${admin.email}`,
+                    ip,
+                    user_agent: userAgent
+                });
+            } catch (logError) {
+                console.error("Erro ao registrar log (criarAdmin):", logError);
+            }
+
+            return res.status(201).json({
+                status: true,
+                message: "Admin criado com sucesso",
+                dados: admin
+            });
+
+        } catch (error: any) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao criar admin"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 ADMINS - ATUALIZAR
+    // ============================================
+    async atualizarAdmin(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+            const id = getParamId(req);
+            const ip = getClientIp(req);
+            const userAgent = req.headers["user-agent"] || "";
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'gerenciar_admins');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para gerenciar admins"
+                });
+            }
+
+            const admin = await adminService.atualizarAdmin(id, req.body);
+
+            try {
+                await adminService.registrarLog({
+                    admin_id: adminId,
+                    acao: 'atualizar_admin',
+                    descricao: `Admin atualizado: ${id}`,
+                    ip,
+                    user_agent: userAgent
+                });
+            } catch (logError) {
+                console.error("Erro ao registrar log (atualizarAdmin):", logError);
+            }
+
+            return res.json({
+                status: true,
+                message: "Admin atualizado com sucesso",
+                dados: admin
+            });
+
+        } catch (error: any) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao atualizar admin"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 ADMINS - EXCLUIR
+    // ============================================
+    async excluirAdmin(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+            const id = getParamId(req);
+            const ip = getClientIp(req);
+            const userAgent = req.headers["user-agent"] || "";
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            // Não pode excluir a si mesmo
+            if (adminId === id) {
+                return res.status(400).json({
+                    status: false,
+                    message: "Voce nao pode excluir sua propria conta"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'gerenciar_admins');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para gerenciar admins"
+                });
+            }
+
+            const ok = await adminService.excluirAdmin(id);
+
+            if (!ok) {
+                return res.status(404).json({
+                    status: false,
+                    message: "Admin nao encontrado"
+                });
+            }
+
+            try {
+                await adminService.registrarLog({
+                    admin_id: adminId,
+                    acao: 'excluir_admin',
+                    descricao: `Admin excluido: ${id}`,
+                    ip,
+                    user_agent: userAgent
+                });
+            } catch (logError) {
+                console.error("Erro ao registrar log (excluirAdmin):", logError);
+            }
+
+            return res.json({
+                status: true,
+                message: "Admin excluido com sucesso"
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao excluir admin"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 LOGS DO SISTEMA - LISTAR
+    // ============================================
+    async listarLogs(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'ver_logs');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para ver logs"
+                });
+            }
+
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const acao = req.query.acao as string;
+            const desde = req.query.desde as string;
+            const ate = req.query.ate as string;
+            const admin_id = req.query.admin_id ? parseInt(req.query.admin_id as string) : undefined;
+
+            const resultado = await adminService.listarLogs({
+                page,
+                limit,
+                acao,
+                desde,
+                ate,
+                admin_id
+            });
+
+            return res.json({
+                status: true,
+                dados: resultado.dados,
+                total: resultado.total,
+                total_paginas: resultado.total_paginas,
+                pagina_atual: page
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao listar logs"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 HISTORICO DE LOGINS DOS USUARIOS
+    // ============================================
+    async listarLogins(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'ver_logs');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para ver logs"
+                });
+            }
+
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const busca = req.query.busca as string;
+            const usuario_id = req.query.usuario_id ? parseInt(req.query.usuario_id as string) : undefined;
+
+            const resultado = await adminService.listarLogins({
+                page,
+                limit,
+                busca,
+                usuario_id
+            });
+
+            return res.json({
+                status: true,
+                dados: resultado.dados,
+                total: resultado.total,
+                total_paginas: resultado.total_paginas,
+                pagina_atual: page
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao listar logins"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 SESSOES ADMIN - LISTAR
+    // ============================================
+    async listarSessoes(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'ver_sessoes');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para ver sessoes"
+                });
+            }
+
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const apenas_ativas = req.query.ativas === 'true';
+
+            const resultado = await adminService.listarSessoesAdmin({
+                page,
+                limit,
+                apenas_ativas
+            });
+
+            return res.json({
+                status: true,
+                dados: resultado.dados,
+                total: resultado.total,
+                total_paginas: resultado.total_paginas,
+                pagina_atual: page
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao listar sessoes"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 SESSOES ADMIN - REVOGAR UMA
+    // ============================================
+    async revogarSessao(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+            const id = getParamId(req);
+            const ip = getClientIp(req);
+            const userAgent = req.headers["user-agent"] || "";
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'ver_sessoes');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para gerenciar sessoes"
+                });
+            }
+
+            const ok = await adminService.revogarSessaoAdmin(id);
+
+            if (!ok) {
+                return res.status(404).json({
+                    status: false,
+                    message: "Sessao nao encontrada"
+                });
+            }
+
+            try {
+                await adminService.registrarLog({
+                    admin_id: adminId,
+                    acao: 'revogar_sessao',
+                    descricao: `Sessao revogada: ${id}`,
+                    ip,
+                    user_agent: userAgent
+                });
+            } catch (logError) {
+                console.error("Erro ao registrar log (revogarSessao):", logError);
+            }
+
+            return res.json({
+                status: true,
+                message: "Sessao revogada com sucesso"
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao revogar sessao"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 SESSOES ADMIN - REVOGAR TODAS DE UM ADMIN
+    // ============================================
+    async revogarSessoesAdmin(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+            const targetId = getParamId(req);
+            const ip = getClientIp(req);
+            const userAgent = req.headers["user-agent"] || "";
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const temPermissao = await adminService.verificarPermissao(adminId, 'ver_sessoes');
+            if (!temPermissao) {
+                return res.status(403).json({
+                    status: false,
+                    message: "Sem permissao para gerenciar sessoes"
+                });
+            }
+
+            const total = await adminService.revogarSessoesAdmin(targetId);
+
+            try {
+                await adminService.registrarLog({
+                    admin_id: adminId,
+                    acao: 'revogar_sessoes_admin',
+                    descricao: `${total} sessoes revogadas do admin ${targetId}`,
+                    ip,
+                    user_agent: userAgent
+                });
+            } catch (logError) {
+                console.error("Erro ao registrar log (revogarSessoesAdmin):", logError);
+            }
+
+            return res.json({
+                status: true,
+                message: `${total} sessoes revogadas`,
+                sessoes_revogadas: total
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao revogar sessoes"
+            });
+        }
+    }
+
+    // ============================================
+    // 🆕 LIMPAR SESSOES INATIVAS (autenticado)
+    // ============================================
+    async limparSessoesInativasAdmin(req: Request, res: Response): Promise<Response> {
+        try {
+            const adminId = (req as RequestWithAdmin).admin?.admin_id;
+            const ip = getClientIp(req);
+
+            if (!adminId) {
+                return res.status(401).json({
+                    status: false,
+                    message: "Nao autorizado"
+                });
+            }
+
+            const total = await adminService.limparSessoesInativasAdmin();
+
+            try {
+                await adminService.registrarLog({
+                    admin_id: adminId,
+                    acao: 'limpar_sessoes_inativas',
+                    descricao: `${total} sessoes inativas limpas`,
+                    ip
+                });
+            } catch (logError) {
+                console.error("Erro ao registrar log (limparSessoesInativasAdmin):", logError);
+            }
+
+            return res.json({
+                status: true,
+                sessoes_desativadas: total
+            });
+
+        } catch (error: any) {
+            return res.status(500).json({
+                status: false,
+                message: error.message || "Erro ao limpar sessoes inativas"
+            });
         }
     }
 }
