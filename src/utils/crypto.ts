@@ -1,28 +1,14 @@
 import crypto from 'crypto';
 
-// Função para limpar caracteres invisíveis
+// Remove caracteres invisíveis e espaços extras
 const limparTexto = (texto: string): string => {
     if (!texto) return '';
-    // Remove caracteres invisíveis: espaços, quebras de linha, tabs, etc.
     return texto.replace(/[\s\u200B-\u200D\uFEFF\xA0]/g, '').trim();
 };
 
 export const sha256 = (texto: string): string => {
-    // 🔴 LIMPAR O TEXTO ANTES DE GERAR O HASH
     const textoLimpo = limparTexto(texto);
-    
-    console.log(`🔐 sha256 - Entrada original: "${texto}"`);
-    console.log(`🔐 sha256 - Entrada limpa:   "${textoLimpo}"`);
-    console.log(`🔐 sha256 - Tipo: ${typeof texto}`);
-    console.log(`🔐 sha256 - Tamanho original: ${texto?.length}`);
-    console.log(`🔐 sha256 - Tamanho limpo: ${textoLimpo.length}`);
-    console.log(`🔐 sha256 - Caracteres originais:`, [...texto || ''].map(c => `'${c}'`).join(', '));
-    console.log(`🔐 sha256 - Caracteres limpos:`, [...textoLimpo || ''].map(c => `'${c}'`).join(', '));
-    
-    const hash = crypto.createHash('sha256').update(textoLimpo).digest('hex');
-    console.log(`🔐 sha256 - Hash gerado: "${hash}"`);
-    
-    return hash;
+    return crypto.createHash('sha256').update(textoLimpo).digest('hex');
 };
 
 export const gerarToken = (bytes: number = 32): string => {
@@ -30,25 +16,39 @@ export const gerarToken = (bytes: number = 32): string => {
 };
 
 export const gerarCodigoVerificacao = (): string => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return crypto.randomInt(100000, 1000000).toString();
 };
 
 export const compararSenha = (senhaDigitada: string, senhaHash: string): boolean => {
-    // 🔴 LIMPAR A SENHA ANTES DE COMPARAR
     const senhaLimpa = limparTexto(senhaDigitada);
-    
-    console.log("🔍 COMPARAR SENHA:");
-    console.log(`  Senha original: "${senhaDigitada}"`);
-    console.log(`  Senha limpa:    "${senhaLimpa}"`);
-    console.log(`  Hash banco:     "${senhaHash}"`);
-    
-    const hash = sha256(senhaLimpa);
-    console.log(`  Hash calculado: "${hash}"`);
-    console.log(`  Resultado: ${hash === senhaHash ? '✅ IGUAIS' : '❌ DIFERENTES'}`);
-    
-    return hash === senhaHash;
+    const hashCalculado = sha256(senhaLimpa);
+
+    try {
+        const bufA = Buffer.from(hashCalculado, 'hex');
+        const bufB = Buffer.from(senhaHash, 'hex');
+        if (bufA.length !== bufB.length) return false;
+        return crypto.timingSafeEqual(bufA, bufB);
+    } catch {
+        return false;
+    }
 };
 
 export const hashSenha = (senha: string): string => {
     return sha256(senha);
+};
+
+export const compararSecretSeguro = (a: string, b: string): boolean => {
+    try {
+        const bufA = Buffer.from(a);
+        const bufB = Buffer.from(b);
+        if (bufA.length !== bufB.length) {
+            // Compara de qualquer forma para evitar timing oracle
+            const pad = Buffer.alloc(bufA.length);
+            crypto.timingSafeEqual(pad, pad);
+            return false;
+        }
+        return crypto.timingSafeEqual(bufA, bufB);
+    } catch {
+        return false;
+    }
 };

@@ -1,65 +1,41 @@
-import { Router } from "express";
-import authController from "../controller/UserCadastroController";
-import { validarUsuario, validarLogin } from "../validators/userValidator";
-import { validarToken } from "../middlewares/auth";
-import UserCadastroController from "../controller/UserCadastroController";
+import { Router } from 'express';
+import authController from '../controller/UserCadastroController';
+import { validarUsuario, validarLogin } from '../validators/userValidator';
+import { validarToken } from '../middlewares/auth';
+import { loginLimiter, sensitiveLimiter } from '../middlewares/rateLimit';
 
 const router = Router();
 
 // Health check
-router.get("/health", (_req, res) => {  // ADICIONOU _
+router.get('/health', (_req, res) => {
     res.json({
-        status: "online",
+        status: 'online',
         timestamp: new Date().toISOString(),
-        versao: "1.0.0",
-        ambiente: process.env.NODE_ENV || "development"
+        versao: '1.0.0',
+        ambiente: process.env.NODE_ENV ?? 'development'
     });
 });
 
 // Rota raiz
-router.get("/", (_req, res) => {  // ADICIONOU _
-    res.json({
-        status: "online",
-        mensagem: "API de Login",
-        versao: "1.0.0",
-        endpoints: [
-            "GET /",
-        ]
-    });
+router.get('/', (_req, res) => {
+    res.json({ status: 'online', mensagem: 'API de Login', versao: '1.0.0' });
 });
 
-/*
-"GET /health",
-    "GET /listar",
-    "POST /cadastrar",
-    "POST /login",
-    "POST /validar-token",
-    "GET /validar-token",
-    "POST /logout"
-*/
+// Autenticacao
+router.post('/cadastrar', sensitiveLimiter, validarUsuario, authController.receber);
+router.post('/login', loginLimiter, validarLogin, authController.logar);
+router.post('/logout', authController.logout);
+router.post('/validar-token', authController.validarToken);
+router.get('/validar-token', authController.validarToken);
+router.get('/check-pagamento', authController.checkPagamento);
+router.get('/listar', authController.listar);
 
-router.get("/listar", authController.listar);
-router.post("/cadastrar", validarUsuario, authController.receber);
-router.post("/login", validarLogin, authController.logar);
-router.post("/validar-token", authController.validarToken);
-router.get("/validar-token", authController.validarToken);
-router.post("/logout", authController.logout);
-router.get("/check-pagamento", authController.checkPagamento);
+// Favoritos (protegidas)
+router.get('/favoritos', validarToken, authController.listarFavoritos);
+router.post('/favoritos', validarToken, authController.adicionarFavorito);
+router.delete('/favoritos/:item_id', validarToken, authController.removerFavorito);
 
-// ============================================
-// ROTAS DE FAVORITOS (PROTEGIDAS)
-// ============================================
-
-// Listar favoritos
-router.get("/favoritos", validarToken, authController.listarFavoritos);
-
-// Adicionar favorito
-router.post("/favoritos", validarToken, authController.adicionarFavorito);
-
-// Remover favorito
-router.delete("/favoritos/:item_id", validarToken, authController.removerFavorito);
-
-
-router.post('/heartbeat', UserCadastroController.heartbeat);
+// Heartbeat
+router.post('/heartbeat', authController.heartbeat);
 
 export default router;

@@ -1,4 +1,4 @@
-import { query } from "../database/connection";
+import { query } from '../database/connection';
 
 export async function limparSessoesInativas(): Promise<number> {
     try {
@@ -17,20 +17,20 @@ export async function limparSessoesInativas(): Promise<number> {
         );
 
         if (result.rowCount && result.rowCount > 0) {
-            console.log(`🧹 ${result.rowCount} sessões inativas desativadas`);
+            console.log(`[SessaoService] ${result.rowCount} sessoes inativas desativadas`);
 
             for (const row of result.rows) {
                 await query(
                     `INSERT INTO logs_sistema (usuario_id, acao, descricao)
                      VALUES ($1, $2, $3)`,
-                    [row.usuario_id, "logout_inatividade", "Sessão encerrada por inatividade"]
+                    [row.usuario_id, 'logout_inatividade', 'Sessao encerrada por inatividade']
                 );
             }
         }
 
-        return result.rowCount || 0;
+        return result.rowCount ?? 0;
     } catch (error) {
-        console.error("Erro ao limpar sessões:", error);
+        console.error('[SessaoService] Erro ao limpar sessoes:', error);
         return 0;
     }
 }
