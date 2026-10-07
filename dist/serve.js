@@ -4,81 +4,45 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const cors_1 = __importDefault(require("cors"));
+const helmet_1 = __importDefault(require("helmet"));
 require("dotenv/config");
 const routing_1 = __importDefault(require("./routing/routing"));
 const adminRoutes_1 = __importDefault(require("./routing/adminRoutes"));
+const cors_1 = require("./middlewares/cors");
+const rateLimit_1 = require("./middlewares/rateLimit");
 const app = (0, express_1.default)();
-// ============================================
-// 🔴 Vercel roda atrás de proxy
-// ============================================
+// Vercel roda atras de proxy
 app.set('trust proxy', 1);
-app.use((0, cors_1.default)());
-// ============================================
-// CORS - aceita qualquer projeto .vercel.app + localhost
-// ============================================
-/*
-app.use(cors({
-    origin: (origin, callback) => {
-        // ✅ Permite requests sem origin (curl, Postman, apps mobile, server-to-server)
-        if (!origin) {
-            return callback(null, true);
-        }
-
-        // ✅ Qualquer subdomínio .vercel.app
-        if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) {
-            return callback(null, true);
-        }
-
-        // ✅ Localhost em qualquer porta (dev)
-        if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-            return callback(null, true);
-        }
-
-        // ❌ Bloqueia o resto
-        console.warn(`[CORS] Origem bloqueada: ${origin}`);
-        return callback(new Error('Origem nao permitida pelo CORS'));
-    },
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-cron-secret'],
-    exposedHeaders: ['Authorization'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
-})); */
-// ============================================
-// BODY PARSERS
-// ============================================
-app.use(express_1.default.json());
-app.use(express_1.default.urlencoded({ extended: true }));
-// ============================================
-// ROTAS
-// ============================================
+// Seguranca de headers
+app.use((0, helmet_1.default)({ crossOriginResourcePolicy: false }));
+// CORS
+app.use(cors_1.corsMiddleware);
+// Rate limit global
+app.use(rateLimit_1.apiLimiter);
+// Body parsers
+app.use(express_1.default.json({ limit: '1mb' }));
+app.use(express_1.default.urlencoded({ extended: true, limit: '1mb' }));
+// Rotas
 app.use(routing_1.default);
 app.use(adminRoutes_1.default);
-// ============================================
-// 404 JSON
-// ============================================
-app.use((req, res) => {
+// 404
+app.use((_req, res) => {
     res.status(404).json({
         status: false,
-        message: `Rota nao encontrada: ${req.method} ${req.originalUrl}`
+        message: 'Rota nao encontrada'
     });
 });
-// ============================================
-// ERROR HANDLER GLOBAL
-// ============================================
+// Error handler global
 app.use((err, _req, res, _next) => {
-    // 🔴 Se for erro de CORS, retorna 403 em vez de 500
-    if (err.message && err.message.includes('CORS')) {
-        return res.status(403).json({
-            status: false,
-            message: 'Origem bloqueada pelo CORS'
-        });
+    if (err.message?.includes('CORS')) {
+        return res.status(403).json({ status: false, message: 'Origem bloqueada pelo CORS' });
     }
-    console.error('[ERRO GLOBAL]', err);
-    return res.status(err.status || 500).json({
-        status: false,
-        message: err.message || 'Erro interno do servidor'
-    });
+    console.error('[ERRO GLOBAL]', err?.message ?? err);
+    const status = err.status ?? err.statusCode ?? 500;
+    const message = process.env.NODE_ENV === 'production'
+        ? (status < 500 ? err.message : 'Erro interno do servidor')
+        : (err.message ?? 'Erro interno do servidor');
+    return res.status(status).json({ status: false, message });
 });
 exports.default = app;
 //# sourceMappingURL=serve.js.map

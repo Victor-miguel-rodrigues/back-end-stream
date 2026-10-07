@@ -3,6 +3,7 @@ import authController from '../controller/UserCadastroController';
 import { validarUsuario, validarLogin } from '../validators/userValidator';
 import { validarToken } from '../middlewares/auth';
 import { loginLimiter, sensitiveLimiter } from '../middlewares/rateLimit';
+import codigoLoginController from '../controller/codigoLoginController';
 
 const router = Router();
 
@@ -34,6 +35,11 @@ router.get('/listar', authController.listar);
 router.get('/favoritos', validarToken, authController.listarFavoritos);
 router.post('/favoritos', validarToken, authController.adicionarFavorito);
 router.delete('/favoritos/:item_id', validarToken, authController.removerFavorito);
+
+// Codigo de login (protegidas pelo token do usuario)
+router.post('/codigo-login', validarToken, (req, res) => codigoLoginController.gerar(req, res));
+router.get('/codigo-login', validarToken, (req, res) => codigoLoginController.consultar(req, res));
+router.post('/codigo-login/desativar', validarToken, (req, res) => codigoLoginController.desativar(req, res));
 
 // Heartbeat
 router.post('/heartbeat', authController.heartbeat);

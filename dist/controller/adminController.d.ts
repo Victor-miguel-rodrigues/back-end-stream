@@ -10,7 +10,7 @@ export declare class AdminController {
     excluirUsuario(req: Request<{
         id: string;
     }>, res: Response): Promise<Response>;
-    limparInativas(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    limparInativas(_req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
     listarPermissoes(req: Request, res: Response): Promise<Response>;
     listarAdmins(req: Request, res: Response): Promise<Response>;
     buscarAdmin(req: Request, res: Response): Promise<Response>;

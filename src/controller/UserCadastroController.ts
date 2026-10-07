@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { PoolClient } from 'pg';
 import { query, transaction } from '../database/connection';
 import { sha256, gerarToken, compararSenha } from '../utils/crypto';
+import { disableOfCodLogin } from '../services/codigoLoginService';
 
 export class UserCadastroController {
     listar(_req: any, res: any) {
@@ -262,7 +263,7 @@ export class UserCadastroController {
     // ============================================
     async logout(req: Request, res: Response) {
         try {
-            const token = req.headers.authorization?.split(' ')[1] ?? req.body.token;
+            const token = req.headers.authorization?.split(' ')[1] || req.body.token;
 
             if (!token) {
                 return res.status(400).json({ status: false, message: 'Token nao fornecido' });
@@ -283,6 +284,7 @@ export class UserCadastroController {
 
             await transaction(async (client: PoolClient) => {
                 await client.query('UPDATE sessoes SET ativo = FALSE WHERE token = $1', [token]);
+                await disableOfCodLogin(sessao.usuario_id, client);
                 await client.query(
                     `UPDATE historico_login
                      SET data_logout = NOW(),
@@ -337,7 +339,7 @@ export class UserCadastroController {
     // ============================================
     async validarToken(req: Request, res: Response) {
         try {
-            const token = req.headers.authorization?.split(' ')[1] ?? req.body.token ?? req.query.token;
+            const token = req.headers.authorization?.split(' ')[1] || req.body.token || req.query.token;
 
             if (!token) {
                 return res.status(400).json({ status: false, message: 'Token nao fornecido' });
@@ -389,7 +391,7 @@ export class UserCadastroController {
                     }
                 }
 
-                return res.status(401).json({ status: false, valido: false, message: 'Token invalido ou expirado' });
+                return res.status(401).json({ status: false, valido: false, message: 'Token inválido ou expirado' });
             }
 
             const sessao = result.rows[0];
@@ -516,7 +518,7 @@ export class UserCadastroController {
     // ============================================
     async heartbeat(req: Request, res: Response) {
         try {
-            const token = req.headers.authorization?.split(' ')[1] ?? req.body.token;
+            const token = req.headers.authorization?.split(' ')[1] || req.body.token;
             const { reproduzindo } = req.body;
 
             if (!token) {
@@ -535,7 +537,7 @@ export class UserCadastroController {
             );
 
             if (result.rows.length === 0) {
-                return res.status(401).json({ status: false, codigo: 'SESSAO_INVALIDA', message: 'Sessao invalida ou expirada' });
+                return res.status(401).json({ status: false, codigo: 'SESSAO_INVALIDA', message: 'Sessão inválida ou expirada' });
             }
 
             return res.json({ status: true, dados: result.rows[0] });

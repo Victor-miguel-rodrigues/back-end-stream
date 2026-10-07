@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
+import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 export declare const query: <T extends QueryResultRow = any>(text: string, params?: any[]) => Promise<QueryResult<T>>;
 export declare const transaction: <T>(callback: (client: PoolClient) => Promise<T>) => Promise<T>;
 export declare const testConnection: () => Promise<boolean>;

@@ -24,7 +24,9 @@ export const apiLimiter = rateLimit({
     max: 100,
     message: { mensagem: 'Muitas requisicoes. Tente novamente em 15 minutos.' },
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    // Preflight e heartbeat nao contam: se tomarem 429 o front nao detecta o logout
+    skip: (req: Request) => req.method === 'OPTIONS' || req.path === '/heartbeat'
 });
 
 // Limite para rotas sensiveis (cadastro): 3 tentativas por hora por IP

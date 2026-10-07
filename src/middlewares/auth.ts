@@ -42,7 +42,7 @@ export const validarToken = async (
         );
 
         if (result.rows.length === 0) {
-            res.status(401).json({ mensagem: 'Token invalido ou expirado' });
+            res.status(401).json({ mensagem: 'Token inválido ou expirado' });
             return;
         }
 

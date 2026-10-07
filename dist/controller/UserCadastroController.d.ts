@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response } from 'express';
 export declare class UserCadastroController {
     listar(_req: any, res: any): any;
     receber(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;

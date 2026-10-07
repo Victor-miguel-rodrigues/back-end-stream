@@ -42,12 +42,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminController = void 0;
 const adminService_1 = __importDefault(require("../services/adminService"));
 const connection_1 = require("../database/connection");
-// 🔴 FUNÇÃO AUXILIAR PARA PEGAR IP
+// Funcao auxiliar para pegar IP
 const getClientIp = (req) => {
-    const ip = req.ip || req.connection?.remoteAddress || "0.0.0.0";
+    const ip = req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0';
     return Array.isArray(ip) ? ip[0] : ip;
 };
-// 🔴 FUNÇÃO AUXILIAR PARA PEGAR ID
+// Funcao auxiliar para pegar ID numerico do param
 const getParamId = (req) => {
     const id = req.params.id;
     const idStr = Array.isArray(id) ? id[0] : id;
@@ -306,23 +306,15 @@ class AdminController {
             return res.status(500).json({ error: 'Erro interno' });
         }
     }
-    async limparInativas(req, res) {
+    async limparInativas(_req, res) {
         try {
-            const secret = req.headers['x-cron-secret'];
-            if (secret !== process.env.CRON_SECRET) {
-                return res.status(403).json({ status: false, message: "Não autorizado" });
-            }
-            // 👇 Importa a função do arquivo separado
             const { limparSessoesInativas } = await Promise.resolve().then(() => __importStar(require('../services/sessaoService')));
             const total = await limparSessoesInativas();
-            return res.json({
-                status: true,
-                sessoes_desativadas: total
-            });
+            return res.json({ status: true, sessoes_desativadas: total });
         }
         catch (error) {
-            console.error("Erro:", error);
-            return res.status(500).json({ status: false, message: "Erro interno" });
+            console.error('[limparInativas] Erro:', error);
+            return res.status(500).json({ status: false, message: 'Erro interno' });
         }
     }
     // ============================================
