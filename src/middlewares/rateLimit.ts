@@ -1,9 +1,10 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Request } from 'express';
 
 // Chave por IP + email para evitar bypass com emails diferentes
 const loginKeyGenerator = (req: Request): string => {
-    const ip = (req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0') as string;
+    // ipKeyGenerator agrupa enderecos IPv6 por sub-rede (evita burlar o limite trocando de IPv6)
+    const ip = ipKeyGenerator((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0') as string);
     const email = (req.body?.email ?? 'unknown') as string;
     return `${ip}-${email}`;
 };
@@ -38,4 +39,21 @@ export const sensitiveLimiter = rateLimit({
     legacyHeaders: false
 });
 
-export default { loginLimiter, apiLimiter, sensitiveLimiter };
+// Limite do envio/geracao de codigo de login: 10 por minuto por USUARIO (depois do validarToken).
+// Sem usuario na requisicao, cai para o IP. Evita autoclick/flood gravando codigos no banco.
+const codigoLoginKeyGenerator = (req: Request): string => {
+    const usuarioId = (req as any).usuario?.id;
+    if (usuarioId !== undefined) return `u:${usuarioId}`;
+    return `ip:${ipKeyGenerator((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0') as string)}`;
+};
+
+export const codigoLoginLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { mensagem: 'Muitos codigos em pouco tempo. Aguarde 1 minuto.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: codigoLoginKeyGenerator
+});
+
+export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter };

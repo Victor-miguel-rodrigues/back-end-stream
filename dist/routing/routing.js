@@ -36,7 +36,7 @@ router.get('/favoritos', auth_1.validarToken, UserCadastroController_1.default.l
 router.post('/favoritos', auth_1.validarToken, UserCadastroController_1.default.adicionarFavorito);
 router.delete('/favoritos/:item_id', auth_1.validarToken, UserCadastroController_1.default.removerFavorito);
 // Codigo de login (protegidas pelo token do usuario)
-router.post('/codigo-login', auth_1.validarToken, (req, res) => codigoLoginController_1.default.gerar(req, res));
+router.post('/codigo-login', auth_1.validarToken, rateLimit_1.codigoLoginLimiter, (req, res) => codigoLoginController_1.default.gerar(req, res));
 router.get('/codigo-login', auth_1.validarToken, (req, res) => codigoLoginController_1.default.consultar(req, res));
 router.post('/codigo-login/desativar', auth_1.validarToken, (req, res) => codigoLoginController_1.default.desativar(req, res));
 // Heartbeat

@@ -4,7 +4,9 @@ import { query } from '../database/connection';
 import {
     gerarCodigoLogin,
     buscarCodigoLoginAtivo,
-    disableOfCodLogin
+    disableOfCodLogin,
+    normalizarCodigoExterno,
+    salvarCodigoLogin
 } from '../services/codigoLoginService';
 
 // Registra no log sem nunca derrubar a resposta
@@ -23,6 +25,32 @@ export class CodigoLoginController {
             const usuario = (req as RequestWithUser).usuario;
             if (!usuario) {
                 return res.status(401).json({ status: false, message: 'Usuario nao autenticado' });
+            }
+
+            // O app envia o codigo que ele mesmo gerou: guarda no banco (substitui o anterior)
+            if ((req.body as any)?.codigo !== undefined) {
+                const codigoEnviado = normalizarCodigoExterno((req.body as any).codigo);
+                if (!codigoEnviado) {
+                    return res.status(400).json({ status: false, message: 'Codigo invalido. Use 6 letras ou numeros' });
+                }
+
+                const salvo = await salvarCodigoLogin(usuario.id, codigoEnviado);
+                if (salvo === 'EM_USO') {
+                    return res.status(409).json({ status: false, message: 'Codigo ja esta em uso' });
+                }
+
+                registrarLog(usuario.id, usuario.perfil_id, 'codigo_login_salvo', 'Codigo de login salvo', req.ip);
+
+                return res.status(201).json({
+                    status: true,
+                    message: 'Codigo salvo com sucesso',
+                    dados: {
+                        codigo: salvo.codigo,
+                        ativo: salvo.ativo,
+                        criado_em: salvo.data_criacao,
+                        expira_em: salvo.data_expiracao
+                    }
+                });
             }
 
             const { criado, dados } = await gerarCodigoLogin(usuario.id);

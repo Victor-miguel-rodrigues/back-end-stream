@@ -81,6 +81,47 @@ export async function gerarCodigoLogin(
     throw new Error('Nao foi possivel gerar um codigo unico');
 }
 
+// Aceita somente 6 letras/numeros (o formato do codigo gerado pelo app). Retorna o codigo em maiusculas ou null
+export const normalizarCodigoExterno = (valor: unknown): string | null => {
+    if (typeof valor !== 'string') return null;
+    const codigo = valor.trim().toUpperCase();
+    return /^[A-Z0-9]{6}$/.test(codigo) ? codigo : null;
+};
+
+// Guarda o codigo que o APP gerou. Cada chamada substitui o codigo anterior do usuario
+// (1 usuario = 1 codigo). Retorna 'EM_USO' se o codigo pertence a OUTRO usuario ainda valido.
+export async function salvarCodigoLogin(
+    usuarioId: number,
+    codigo: string
+): Promise<CodigoLogin | 'EM_USO'> {
+    // Libera o codigo caso esteja preso a outro usuario, mas ja desativado ou vencido
+    await query(
+        `DELETE FROM codigos_login
+         WHERE codigo = $1 AND usuario_id <> $2
+           AND (ativo = FALSE OR data_expiracao <= NOW())`,
+        [codigo, usuarioId]
+    );
+
+    try {
+        const result = await query<CodigoLogin>(
+            `INSERT INTO codigos_login (usuario_id, codigo, ativo, data_criacao, data_expiracao)
+             VALUES ($1, $2, TRUE, NOW(), NOW() + INTERVAL '${DURACAO_HORAS} hours')
+             ON CONFLICT (usuario_id) DO UPDATE
+                SET codigo         = EXCLUDED.codigo,
+                    ativo          = TRUE,
+                    data_criacao   = NOW(),
+                    data_expiracao = NOW() + INTERVAL '${DURACAO_HORAS} hours'
+             RETURNING codigo, ativo, data_criacao, data_expiracao`,
+            [usuarioId, codigo]
+        );
+        return result.rows[0];
+    } catch (error: any) {
+        // 23505 = unique_violation: outro usuario ainda valido ja usa esse codigo
+        if (error?.code === '23505') return 'EM_USO';
+        throw error;
+    }
+}
+
 // Desativa o codigo do usuario (chamado no logout e pela rota de desativar).
 // Aceita um client para rodar dentro de uma transacao existente.
 export async function disableOfCodLogin(
