@@ -56,4 +56,24 @@ export const codigoLoginLimiter = rateLimit({
     keyGenerator: codigoLoginKeyGenerator
 });
 
+<<<<<<< HEAD
 export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter };
+=======
+// Rota PUBLICA do app (sem login): 6 por minuto por aparelho (device_id). Sem device_id valido, por IP.
+const codigoAppKeyGenerator = (req: Request): string => {
+    const id = (req as any).body?.device_id;
+    if (typeof id === 'string' && /^[A-Za-z0-9._-]{8,80}$/.test(id)) return `d:${id}`;
+    return `ip:${ipKeyGenerator((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0') as string)}`;
+};
+
+export const codigoAppLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 6,
+    message: { mensagem: 'Muitos codigos em pouco tempo. Aguarde 1 minuto.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: codigoAppKeyGenerator
+});
+
+export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter, codigoAppLimiter };
+>>>>>>> 9e7a2b4 (rebase)

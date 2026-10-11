@@ -9,6 +9,32 @@ const registrarLog = (usuarioId, perfilId, acao, descricao, ip) => {
          VALUES ($1, $2, $3, $4, $5)`, [usuarioId, perfilId, acao, descricao, ip ?? '0.0.0.0']).catch(err => console.error('[codigoLogin] Erro ao registrar log:', err));
 };
 class CodigoLoginController {
+    // POST /codigo-login/app  -> o APP guarda o codigo que gerou (sem login; 1 codigo por aparelho)
+    async salvarApp(req, res) {
+        try {
+            const codigo = (0, codigoLoginService_1.normalizarCodigoExterno)(req.body?.codigo);
+            const deviceId = (0, codigoLoginService_1.normalizarDeviceId)(req.body?.device_id);
+            if (!codigo || !deviceId) {
+                return res.status(400).json({
+                    status: false,
+                    message: 'Informe codigo (6 letras ou numeros) e device_id'
+                });
+            }
+            const salvo = await (0, codigoLoginService_1.salvarCodigoApp)(deviceId, codigo);
+            if (salvo === 'EM_USO') {
+                return res.status(409).json({ status: false, message: 'Codigo ja esta em uso' });
+            }
+            return res.status(201).json({
+                status: true,
+                message: 'Codigo salvo com sucesso',
+                dados: { codigo: salvo.codigo, expira_em: salvo.expira_em }
+            });
+        }
+        catch (error) {
+            console.error('[codigoLogin.salvarApp] Erro:', error);
+            return res.status(500).json({ status: false, message: 'Erro ao salvar codigo' });
+        }
+    }
     // POST /codigo-login  -> gera (ou devolve o que ainda vale)
     async gerar(req, res) {
         try {

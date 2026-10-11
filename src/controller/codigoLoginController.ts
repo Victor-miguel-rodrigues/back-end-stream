@@ -6,7 +6,13 @@ import {
     buscarCodigoLoginAtivo,
     disableOfCodLogin,
     normalizarCodigoExterno,
+<<<<<<< HEAD
     salvarCodigoLogin
+=======
+    salvarCodigoLogin,
+    normalizarDeviceId,
+    salvarCodigoApp
+>>>>>>> 9e7a2b4 (rebase)
 } from '../services/codigoLoginService';
 
 // Registra no log sem nunca derrubar a resposta
@@ -19,6 +25,35 @@ const registrarLog = (usuarioId: number, perfilId: number, acao: string, descric
 };
 
 export class CodigoLoginController {
+    // POST /codigo-login/app  -> o APP guarda o codigo que gerou (sem login; 1 codigo por aparelho)
+    async salvarApp(req: Request, res: Response) {
+        try {
+            const codigo = normalizarCodigoExterno((req.body as any)?.codigo);
+            const deviceId = normalizarDeviceId((req.body as any)?.device_id);
+
+            if (!codigo || !deviceId) {
+                return res.status(400).json({
+                    status: false,
+                    message: 'Informe codigo (6 letras ou numeros) e device_id'
+                });
+            }
+
+            const salvo = await salvarCodigoApp(deviceId, codigo);
+            if (salvo === 'EM_USO') {
+                return res.status(409).json({ status: false, message: 'Codigo ja esta em uso' });
+            }
+
+            return res.status(201).json({
+                status: true,
+                message: 'Codigo salvo com sucesso',
+                dados: { codigo: salvo.codigo, expira_em: salvo.expira_em }
+            });
+        } catch (error) {
+            console.error('[codigoLogin.salvarApp] Erro:', error);
+            return res.status(500).json({ status: false, message: 'Erro ao salvar codigo' });
+        }
+    }
+
     // POST /codigo-login  -> gera (ou devolve o que ainda vale)
     async gerar(req: Request, res: Response) {
         try {

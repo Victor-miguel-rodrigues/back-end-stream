@@ -3,11 +3,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.normalizarCodigoExterno = void 0;
+exports.normalizarDeviceId = exports.normalizarCodigoExterno = void 0;
 exports.buscarCodigoLoginAtivo = buscarCodigoLoginAtivo;
 exports.gerarCodigoLogin = gerarCodigoLogin;
 exports.salvarCodigoLogin = salvarCodigoLogin;
 exports.disableOfCodLogin = disableOfCodLogin;
+exports.salvarCodigoApp = salvarCodigoApp;
 const crypto_1 = __importDefault(require("crypto"));
 const connection_1 = require("../database/connection");
 const DURACAO_HORAS = 12;
@@ -112,5 +113,38 @@ async function disableOfCodLogin(usuarioId, client) {
         ? await client.query(sql, [usuarioId])
         : await (0, connection_1.query)(sql, [usuarioId]);
     return (result.rowCount ?? 0) > 0;
+}
+// ---------------------------------------------------------------------------
+// Codigo gerado pelo APP, sem login: 1 codigo por aparelho (app), guardado ate o site usar
+// ---------------------------------------------------------------------------
+// Identificador do aparelho (o app usa um UUID guardado no celular)
+const normalizarDeviceId = (valor) => {
+    if (typeof valor !== 'string')
+        return null;
+    const id = valor.trim();
+    return /^[A-Za-z0-9._-]{8,80}$/.test(id) ? id : null;
+};
+exports.normalizarDeviceId = normalizarDeviceId;
+// Guarda o codigo do aparelho. Cada chamada substitui o codigo anterior do mesmo aparelho.
+// Retorna 'EM_USO' se o codigo ja pertence a OUTRO aparelho e ainda nao venceu.
+async function salvarCodigoApp(deviceId, codigo) {
+    // Apaga codigos vencidos (mantem a tabela pequena e libera codigos antigos)
+    await (0, connection_1.query)(`DELETE FROM codigos_app WHERE expira_em <= NOW()`);
+    try {
+        const result = await (0, connection_1.query)(`INSERT INTO codigos_app (device_id, codigo, criado_em, expira_em)
+             VALUES ($1, $2, NOW(), NOW() + INTERVAL '${DURACAO_HORAS} hours')
+             ON CONFLICT (device_id) DO UPDATE
+                SET codigo    = EXCLUDED.codigo,
+                    criado_em = NOW(),
+                    expira_em = NOW() + INTERVAL '${DURACAO_HORAS} hours'
+             RETURNING codigo, criado_em, expira_em`, [deviceId, codigo]);
+        return result.rows[0];
+    }
+    catch (error) {
+        // 23505 = unique_violation: outro aparelho ja usa esse codigo
+        if (error?.code === '23505')
+            return 'EM_USO';
+        throw error;
+    }
 }
 //# sourceMappingURL=codigoLoginService.js.map

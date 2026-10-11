@@ -17,6 +17,10 @@ const allowedOrigins: string[] = process.env.CORS_ORIGINS
 
 const normalize = (origin: string): string => origin.replace(/\/$/, '');
 
+// Origens do app instalado no celular (WebView do Capacitor): nao e um dominio publico, a origem e fixa.
+// Android (androidScheme: https) -> https://localhost | iOS -> capacitor://localhost | Ionic -> ionic://localhost
+const appOrigins: string[] = ['https://localhost', 'capacitor://localhost', 'ionic://localhost'];
+
 export const corsOptions: CorsOptions = {
     origin: (origin, callback) => {
         // Permite requests sem origin (Postman, server-to-server, mobile)
@@ -31,6 +35,11 @@ export const corsOptions: CorsOptions = {
 
         // Permite localhost em qualquer porta
         if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin)) {
+            return callback(null, true);
+        }
+
+        // Permite o app mobile (Capacitor/Ionic)
+        if (appOrigins.includes(cleanOrigin)) {
             return callback(null, true);
         }
 

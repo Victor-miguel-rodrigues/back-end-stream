@@ -19,6 +19,9 @@ const allowedOrigins = process.env.CORS_ORIGINS
         'https://back-end-stream.vercel.app',
     ];
 const normalize = (origin) => origin.replace(/\/$/, '');
+// Origens do app instalado no celular (WebView do Capacitor): nao e um dominio publico, a origem e fixa.
+// Android (androidScheme: https) -> https://localhost | iOS -> capacitor://localhost | Ionic -> ionic://localhost
+const appOrigins = ['https://localhost', 'capacitor://localhost', 'ionic://localhost'];
 exports.corsOptions = {
     origin: (origin, callback) => {
         // Permite requests sem origin (Postman, server-to-server, mobile)
@@ -31,6 +34,10 @@ exports.corsOptions = {
         }
         // Permite localhost em qualquer porta
         if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin)) {
+            return callback(null, true);
+        }
+        // Permite o app mobile (Capacitor/Ionic)
+        if (appOrigins.includes(cleanOrigin)) {
             return callback(null, true);
         }
         const isAllowed = allowedOrigins.some(o => normalize(o) === cleanOrigin);

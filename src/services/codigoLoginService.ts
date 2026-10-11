@@ -139,3 +139,42 @@ export async function disableOfCodLogin(
 
     return (result.rowCount ?? 0) > 0;
 }
+
+// ---------------------------------------------------------------------------
+// Codigo gerado pelo APP, sem login: 1 codigo por aparelho (app), guardado ate o site usar
+// ---------------------------------------------------------------------------
+
+// Identificador do aparelho (o app usa um UUID guardado no celular)
+export const normalizarDeviceId = (valor: unknown): string | null => {
+    if (typeof valor !== 'string') return null;
+    const id = valor.trim();
+    return /^[A-Za-z0-9._-]{8,80}$/.test(id) ? id : null;
+};
+
+// Guarda o codigo do aparelho. Cada chamada substitui o codigo anterior do mesmo aparelho.
+// Retorna 'EM_USO' se o codigo ja pertence a OUTRO aparelho e ainda nao venceu.
+export async function salvarCodigoApp(
+    deviceId: string,
+    codigo: string
+): Promise<{ codigo: string; criado_em: Date; expira_em: Date } | 'EM_USO'> {
+    // Apaga codigos vencidos (mantem a tabela pequena e libera codigos antigos)
+    await query(`DELETE FROM codigos_app WHERE expira_em <= NOW()`);
+
+    try {
+        const result = await query<{ codigo: string; criado_em: Date; expira_em: Date }>(
+            `INSERT INTO codigos_app (device_id, codigo, criado_em, expira_em)
+             VALUES ($1, $2, NOW(), NOW() + INTERVAL '${DURACAO_HORAS} hours')
+             ON CONFLICT (device_id) DO UPDATE
+                SET codigo    = EXCLUDED.codigo,
+                    criado_em = NOW(),
+                    expira_em = NOW() + INTERVAL '${DURACAO_HORAS} hours'
+             RETURNING codigo, criado_em, expira_em`,
+            [deviceId, codigo]
+        );
+        return result.rows[0];
+    } catch (error: any) {
+        // 23505 = unique_violation: outro aparelho ja usa esse codigo
+        if (error?.code === '23505') return 'EM_USO';
+        throw error;
+    }
+}

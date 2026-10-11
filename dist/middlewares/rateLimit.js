@@ -33,12 +33,11 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.codigoLoginLimiter = exports.sensitiveLimiter = exports.apiLimiter = exports.loginLimiter = void 0;
+exports.codigoAppLimiter = exports.codigoLoginLimiter = exports.sensitiveLimiter = exports.apiLimiter = exports.loginLimiter = void 0;
 const express_rate_limit_1 = __importStar(require("express-rate-limit"));
 // Chave por IP + email para evitar bypass com emails diferentes
 const loginKeyGenerator = (req) => {
-    // ipKeyGenerator agrupa enderecos IPv6 por sub-rede (evita burlar o limite trocando de IPv6)
-    const ip = (0, express_rate_limit_1.ipKeyGenerator)((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0'));
+    const ip = (req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0');
     const email = (req.body?.email ?? 'unknown');
     return `${ip}-${email}`;
 };
@@ -85,5 +84,20 @@ exports.codigoLoginLimiter = (0, express_rate_limit_1.default)({
     legacyHeaders: false,
     keyGenerator: codigoLoginKeyGenerator
 });
-exports.default = { loginLimiter: exports.loginLimiter, apiLimiter: exports.apiLimiter, sensitiveLimiter: exports.sensitiveLimiter, codigoLoginLimiter: exports.codigoLoginLimiter };
+// Rota PUBLICA do app (sem login): 6 por minuto por aparelho (device_id). Sem device_id valido, por IP.
+const codigoAppKeyGenerator = (req) => {
+    const id = req.body?.device_id;
+    if (typeof id === 'string' && /^[A-Za-z0-9._-]{8,80}$/.test(id))
+        return `d:${id}`;
+    return `ip:${(0, express_rate_limit_1.ipKeyGenerator)((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0'))}`;
+};
+exports.codigoAppLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 1000,
+    max: 6,
+    message: { mensagem: 'Muitos codigos em pouco tempo. Aguarde 1 minuto.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: codigoAppKeyGenerator
+});
+exports.default = { loginLimiter: exports.loginLimiter, apiLimiter: exports.apiLimiter, sensitiveLimiter: exports.sensitiveLimiter, codigoLoginLimiter: exports.codigoLoginLimiter, codigoAppLimiter: exports.codigoAppLimiter };
 //# sourceMappingURL=rateLimit.js.map
