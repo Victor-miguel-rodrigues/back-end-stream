@@ -3,10 +3,14 @@ import authController from '../controller/UserCadastroController';
 import { validarUsuario, validarLogin } from '../validators/userValidator';
 import { validarToken } from '../middlewares/auth';
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { loginLimiter, sensitiveLimiter, codigoLoginLimiter } from '../middlewares/rateLimit';
 =======
 import { loginLimiter, sensitiveLimiter, codigoLoginLimiter, codigoAppLimiter } from '../middlewares/rateLimit';
 >>>>>>> 9e7a2b4 (rebase)
+=======
+import { loginLimiter, sensitiveLimiter, codigoLoginLimiter, codigoAppLimiter } from '../middlewares/rateLimit';
+>>>>>>> 94cf105 (release)
 import codigoLoginController from '../controller/codigoLoginController';
 
 const router = Router();
@@ -42,9 +46,13 @@ router.delete('/favoritos/:item_id', validarToken, authController.removerFavorit
 
 // Codigo de login (protegidas pelo token do usuario)
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 router.post('/codigo-login/app', codigoAppLimiter, (req, res) => codigoLoginController.salvarApp(req, res));
 >>>>>>> 9e7a2b4 (rebase)
+=======
+router.post('/codigo-login/app', codigoAppLimiter, (req, res) => codigoLoginController.salvarApp(req, res));
+>>>>>>> 94cf105 (release)
 router.post('/codigo-login', validarToken, codigoLoginLimiter, (req, res) => codigoLoginController.gerar(req, res));
 router.get('/codigo-login', validarToken, (req, res) => codigoLoginController.consultar(req, res));
 router.post('/codigo-login/desativar', validarToken, (req, res) => codigoLoginController.desativar(req, res));

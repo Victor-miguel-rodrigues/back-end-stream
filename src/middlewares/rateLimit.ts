@@ -57,8 +57,11 @@ export const codigoLoginLimiter = rateLimit({
 });
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter };
 =======
+=======
+>>>>>>> 94cf105 (release)
 // Rota PUBLICA do app (sem login): 6 por minuto por aparelho (device_id). Sem device_id valido, por IP.
 const codigoAppKeyGenerator = (req: Request): string => {
     const id = (req as any).body?.device_id;
@@ -75,5 +78,9 @@ export const codigoAppLimiter = rateLimit({
     keyGenerator: codigoAppKeyGenerator
 });
 
+<<<<<<< HEAD
 export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter, codigoAppLimiter };
 >>>>>>> 9e7a2b4 (rebase)
+=======
+export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter, codigoAppLimiter };
+>>>>>>> 94cf105 (release)

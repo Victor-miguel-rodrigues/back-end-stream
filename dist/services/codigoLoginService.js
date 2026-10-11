@@ -115,7 +115,8 @@ async function disableOfCodLogin(usuarioId, client) {
     return (result.rowCount ?? 0) > 0;
 }
 // ---------------------------------------------------------------------------
-// Codigo gerado pelo APP, sem login: 1 codigo por aparelho (app), guardado ate o site usar
+// Codigo gerado pelo APP, sem login: 1 codigo por aparelho (device_id) na tabela codigos_login
+// (usuario_id fica vazio ate o site vincular a conta)
 // ---------------------------------------------------------------------------
 // Identificador do aparelho (o app usa um UUID guardado no celular)
 const normalizarDeviceId = (valor) => {
@@ -128,16 +129,21 @@ exports.normalizarDeviceId = normalizarDeviceId;
 // Guarda o codigo do aparelho. Cada chamada substitui o codigo anterior do mesmo aparelho.
 // Retorna 'EM_USO' se o codigo ja pertence a OUTRO aparelho e ainda nao venceu.
 async function salvarCodigoApp(deviceId, codigo) {
-    // Apaga codigos vencidos (mantem a tabela pequena e libera codigos antigos)
-    await (0, connection_1.query)(`DELETE FROM codigos_app WHERE expira_em <= NOW()`);
+    // Limpeza: apaga codigos de app vencidos (sem usuario) e libera este codigo se ele
+    // estiver preso a outro registro ja desativado ou vencido
+    await (0, connection_1.query)(`DELETE FROM codigos_login
+         WHERE (usuario_id IS NULL AND data_expiracao <= NOW())
+            OR (codigo = $1 AND device_id IS DISTINCT FROM $2
+                AND (ativo = FALSE OR data_expiracao <= NOW()))`, [codigo, deviceId]);
     try {
-        const result = await (0, connection_1.query)(`INSERT INTO codigos_app (device_id, codigo, criado_em, expira_em)
-             VALUES ($1, $2, NOW(), NOW() + INTERVAL '${DURACAO_HORAS} hours')
+        const result = await (0, connection_1.query)(`INSERT INTO codigos_login (device_id, codigo, ativo, data_criacao, data_expiracao)
+             VALUES ($1, $2, TRUE, NOW(), NOW() + INTERVAL '${DURACAO_HORAS} hours')
              ON CONFLICT (device_id) DO UPDATE
-                SET codigo    = EXCLUDED.codigo,
-                    criado_em = NOW(),
-                    expira_em = NOW() + INTERVAL '${DURACAO_HORAS} hours'
-             RETURNING codigo, criado_em, expira_em`, [deviceId, codigo]);
+                SET codigo         = EXCLUDED.codigo,
+                    ativo          = TRUE,
+                    data_criacao   = NOW(),
+                    data_expiracao = NOW() + INTERVAL '${DURACAO_HORAS} hours'
+             RETURNING codigo, data_criacao AS criado_em, data_expiracao AS expira_em`, [deviceId, codigo]);
         return result.rows[0];
     }
     catch (error) {

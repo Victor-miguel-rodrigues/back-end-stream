@@ -7,12 +7,18 @@ import {
     disableOfCodLogin,
     normalizarCodigoExterno,
 <<<<<<< HEAD
+<<<<<<< HEAD
     salvarCodigoLogin
 =======
     salvarCodigoLogin,
     normalizarDeviceId,
     salvarCodigoApp
 >>>>>>> 9e7a2b4 (rebase)
+=======
+    salvarCodigoLogin,
+    normalizarDeviceId,
+    salvarCodigoApp
+>>>>>>> 94cf105 (release)
 } from '../services/codigoLoginService';
 
 // Registra no log sem nunca derrubar a resposta
