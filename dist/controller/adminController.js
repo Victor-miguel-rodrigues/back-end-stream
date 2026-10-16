@@ -53,6 +53,107 @@ const getParamId = (req) => {
     const idStr = Array.isArray(id) ? id[0] : id;
     return parseInt(idStr, 10);
 };
+// Confere o token e a permissao; responde 401/403 e devolve null se nao autorizado
+const autorizar = async (req, res, permissao, mensagem) => {
+    const adminId = req.admin?.admin_id;
+    if (!adminId) {
+        res.status(401).json({ status: false, message: "Nao autorizado" });
+        return null;
+    }
+    const temPermissao = await adminService_1.default.verificarPermissao(adminId, permissao);
+    if (!temPermissao) {
+        res.status(403).json({ status: false, message: mensagem });
+        return null;
+    }
+    return adminId;
+};
+// Detecta o tipo da imagem pelos primeiros bytes (nao confia no Content-Type enviado)
+const detectarMimeImagem = (b) => {
+    if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff)
+        return 'image/jpeg';
+    if (b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
+        return 'image/png';
+    if (b.length > 12 && b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WEBP')
+        return 'image/webp';
+    return null;
+};
+// Confere a ESTRUTURA da imagem (nao so o cabecalho): dimensoes reais, marcador de fim e nada sobrando
+// depois dele. Barra arquivo "disfarçado" de imagem (shell/script colado no fim ou dentro do arquivo).
+const estruturaImagemValida = (b, mime) => {
+    const MAX_LADO = 20000;
+    const ladoOk = (w, h) => w > 0 && h > 0 && w <= MAX_LADO && h <= MAX_LADO;
+    // Assinaturas de codigo nunca aparecem numa imagem normal
+    const texto = b.toString('latin1').toLowerCase();
+    if (texto.includes('<?php') || texto.includes('<script') || texto.includes('#!/bin/') || texto.includes('eval(base64')) {
+        return false;
+    }
+    if (mime === 'image/png') {
+        if (b.length < 45)
+            return false;
+        let pos = 8;
+        let temIhdr = false;
+        while (pos + 12 <= b.length) {
+            const tam = b.readUInt32BE(pos);
+            const tipo = b.toString('ascii', pos + 4, pos + 8);
+            const fim = pos + 12 + tam;
+            if (fim > b.length)
+                return false;
+            if (!temIhdr) {
+                if (tipo !== 'IHDR' || tam !== 13)
+                    return false;
+                if (!ladoOk(b.readUInt32BE(pos + 8), b.readUInt32BE(pos + 12)))
+                    return false;
+                temIhdr = true;
+            }
+            if (tipo === 'IEND')
+                return fim === b.length;
+            pos = fim;
+        }
+        return false;
+    }
+    if (mime === 'image/jpeg') {
+        let fim = b.length;
+        while (fim > 2 && b[fim - 1] === 0x00)
+            fim--; // alguns celulares deixam zeros no final
+        if (b[fim - 2] !== 0xff || b[fim - 1] !== 0xd9)
+            return false;
+        let pos = 2;
+        while (pos + 4 <= fim) {
+            if (b[pos] !== 0xff)
+                return false;
+            const marcador = b[pos + 1];
+            if (marcador === 0xff) {
+                pos++;
+                continue;
+            }
+            if ((marcador >= 0xc0 && marcador <= 0xc2) || marcador === 0xc3) {
+                if (pos + 9 > fim)
+                    return false;
+                return ladoOk(b.readUInt16BE(pos + 7), b.readUInt16BE(pos + 5));
+            }
+            if (marcador === 0xda || marcador === 0xd9)
+                return false; // dados/fim antes de achar as dimensoes
+            pos += 2 + b.readUInt16BE(pos + 2);
+        }
+        return false;
+    }
+    if (mime === 'image/webp') {
+        if (b.length < 30)
+            return false;
+        if (b.readUInt32LE(4) + 8 !== b.length)
+            return false; // tamanho declarado = tamanho real
+        const tipo = b.toString('ascii', 12, 16);
+        if (tipo !== 'VP8 ' && tipo !== 'VP8L' && tipo !== 'VP8X')
+            return false;
+        if (tipo === 'VP8X') {
+            const w = 1 + (b[24] | (b[25] << 8) | (b[26] << 16));
+            const h = 1 + (b[27] | (b[28] << 8) | (b[29] << 16));
+            return ladoOk(w, h);
+        }
+        return true;
+    }
+    return false;
+};
 class AdminController {
     // ============================================
     // PASSO 1: VERIFICAR CREDENCIAIS
@@ -217,7 +318,7 @@ class AdminController {
                     message: "Sem permissao para marcar como pago"
                 });
             }
-            await adminService_1.default.marcarUsuarioPago(id, adminId, ip);
+            await adminService_1.default.marcarUsuarioPago(id, adminId, ip, req.body?.valor);
             return res.json({
                 status: true,
                 message: "Usuario marcado como pago com sucesso"
@@ -845,6 +946,333 @@ class AdminController {
             return res.status(500).json({
                 status: false,
                 message: error.message || "Erro ao limpar sessoes inativas"
+            });
+        }
+    }
+    // ============================================
+    // RENOVAR USUARIO
+    // ============================================
+    async renovarUsuario(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'marcar_pago', "Sem permissao para renovar usuarios");
+            if (adminId === null)
+                return res;
+            const id = getParamId(req);
+            if (isNaN(id)) {
+                return res.status(400).json({ status: false, message: "ID invalido" });
+            }
+            const { dias, data_validade, valor } = req.body ?? {};
+            const resultado = await adminService_1.default.renovarUsuario(id, adminId, getClientIp(req), { dias, data_validade, valor });
+            return res.json({
+                status: true,
+                message: "Usuario renovado com sucesso",
+                dados: resultado
+            });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao renovar usuario"
+            });
+        }
+    }
+    // ============================================
+    // PAGAMENTOS - HISTORICO
+    // ============================================
+    async listarPagamentos(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'ver_usuarios', "Sem permissao para ver pagamentos");
+            if (adminId === null)
+                return res;
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 30;
+            const busca = req.query.busca;
+            const usuario_id = req.query.usuario_id ? parseInt(req.query.usuario_id) : undefined;
+            const resultado = await adminService_1.default.listarPagamentos({ page, limit, busca, usuario_id });
+            return res.json({
+                status: true,
+                dados: resultado.dados,
+                total: resultado.total,
+                total_paginas: resultado.total_paginas,
+                soma: resultado.soma,
+                pagina_atual: page
+            });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao listar pagamentos"
+            });
+        }
+    }
+    // ============================================
+    // PAGAMENTOS - RESUMO
+    // ============================================
+    async resumoPagamentos(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'ver_dashboard', "Sem permissao para ver o resumo financeiro");
+            if (adminId === null)
+                return res;
+            const dados = await adminService_1.default.resumoPagamentos();
+            return res.json({ status: true, dados });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao carregar resumo de pagamentos"
+            });
+        }
+    }
+    // ============================================
+    // BLOQUEAR / DESBLOQUEAR USUARIO
+    // ============================================
+    async bloquearUsuario(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'excluir_usuario', "Sem permissao para bloquear usuarios");
+            if (adminId === null)
+                return res;
+            const id = getParamId(req);
+            if (isNaN(id)) {
+                return res.status(400).json({ status: false, message: "ID invalido" });
+            }
+            const resultado = await adminService_1.default.alterarBloqueioUsuario(id, adminId, getClientIp(req), true, req.body?.motivo);
+            return res.json({
+                status: true,
+                message: "Usuario bloqueado com sucesso",
+                dados: resultado
+            });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao bloquear usuario"
+            });
+        }
+    }
+    async desbloquearUsuario(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'excluir_usuario', "Sem permissao para desbloquear usuarios");
+            if (adminId === null)
+                return res;
+            const id = getParamId(req);
+            if (isNaN(id)) {
+                return res.status(400).json({ status: false, message: "ID invalido" });
+            }
+            await adminService_1.default.alterarBloqueioUsuario(id, adminId, getClientIp(req), false);
+            return res.json({
+                status: true,
+                message: "Usuario desbloqueado com sucesso"
+            });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao desbloquear usuario"
+            });
+        }
+    }
+    // ============================================
+    // SESSOES / IPS DE UM USUARIO + DESLOGAR
+    // ============================================
+    async listarSessoesUsuario(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'ver_sessoes', "Sem permissao para ver sessoes");
+            if (adminId === null)
+                return res;
+            const id = getParamId(req);
+            if (isNaN(id)) {
+                return res.status(400).json({ status: false, message: "ID invalido" });
+            }
+            const dados = await adminService_1.default.listarSessoesUsuario(id);
+            return res.json({ status: true, dados });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao listar sessoes do usuario"
+            });
+        }
+    }
+    async deslogarUsuario(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'ver_sessoes', "Sem permissao para gerenciar sessoes");
+            if (adminId === null)
+                return res;
+            const id = getParamId(req);
+            if (isNaN(id)) {
+                return res.status(400).json({ status: false, message: "ID invalido" });
+            }
+            const resultado = await adminService_1.default.deslogarUsuario(id, adminId, getClientIp(req));
+            return res.json({
+                status: true,
+                message: resultado.sessoes_encerradas > 0
+                    ? "Usuario deslogado com sucesso"
+                    : "Usuario nao tinha sessao ativa",
+                dados: resultado
+            });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao deslogar usuario"
+            });
+        }
+    }
+    // ============================================
+    // USUARIOS COM MUITOS IPS DIFERENTES
+    // ============================================
+    async listarIpsSuspeitos(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'ver_logs', "Sem permissao para ver logs");
+            if (adminId === null)
+                return res;
+            const dias = Math.min(Math.max(parseInt(req.query.dias) || 7, 1), 90);
+            const minimo = Math.min(Math.max(parseInt(req.query.minimo) || 3, 2), 50);
+            const dados = await adminService_1.default.listarIpsSuspeitos(dias, minimo);
+            return res.json({ status: true, dados, dias, minimo });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao listar IPs suspeitos"
+            });
+        }
+    }
+    // ============================================
+    // COMPROVANTE - ENVIO PUBLICO (usuario manda e-mail + imagem)
+    // POST /comprovantes?email=...  com a imagem no corpo (Content-Type: image/png|jpeg|webp)
+    // ============================================
+    async enviarComprovante(req, res) {
+        try {
+            const email = String(req.query.email ?? '').trim().toLowerCase();
+            if (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                return res.status(400).json({ status: false, message: "E-mail invalido" });
+            }
+            const imagem = req.body;
+            if (!Buffer.isBuffer(imagem) || imagem.length === 0) {
+                return res.status(415).json({ status: false, message: "Envie uma imagem PNG, JPG ou WEBP" });
+            }
+            if (imagem.length < 1024) {
+                return res.status(400).json({ status: false, message: "Imagem muito pequena" });
+            }
+            const mime = detectarMimeImagem(imagem);
+            if (!mime) {
+                return res.status(415).json({ status: false, message: "Arquivo nao e uma imagem PNG, JPG ou WEBP valida" });
+            }
+            if (!estruturaImagemValida(imagem, mime)) {
+                return res.status(415).json({ status: false, message: "Imagem invalida ou corrompida" });
+            }
+            await adminService_1.default.salvarComprovante({
+                email,
+                imagem,
+                mime,
+                ip: getClientIp(req),
+                userAgent: String(req.headers['user-agent'] ?? '').slice(0, 300)
+            });
+            // Mesma resposta exista ou nao uma conta com esse e-mail
+            return res.status(201).json({
+                status: true,
+                message: "Comprovante enviado! Aguarde a confirmacao."
+            });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.status ? error.message : "Erro ao enviar comprovante"
+            });
+        }
+    }
+    // ============================================
+    // COMPROVANTES - PAINEL
+    // ============================================
+    async listarComprovantes(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'ver_usuarios', "Sem permissao para ver comprovantes");
+            if (adminId === null)
+                return res;
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 30;
+            const status = req.query.status;
+            const busca = req.query.busca;
+            const resultado = await adminService_1.default.listarComprovantes({ page, limit, status, busca });
+            return res.json({
+                status: true,
+                dados: resultado.dados,
+                total: resultado.total,
+                total_paginas: resultado.total_paginas,
+                pendentes: resultado.pendentes,
+                pagina_atual: page
+            });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao listar comprovantes"
+            });
+        }
+    }
+    async imagemComprovante(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'ver_usuarios', "Sem permissao para ver comprovantes");
+            if (adminId === null)
+                return res;
+            const id = getParamId(req);
+            if (isNaN(id)) {
+                return res.status(400).json({ status: false, message: "ID invalido" });
+            }
+            const { mime, imagem } = await adminService_1.default.buscarImagemComprovante(id);
+            res.setHeader('Content-Type', mime);
+            res.setHeader('Cache-Control', 'private, max-age=300');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            return res.send(imagem);
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao carregar imagem"
+            });
+        }
+    }
+    async confirmarComprovante(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'marcar_pago', "Sem permissao para confirmar pagamentos");
+            if (adminId === null)
+                return res;
+            const id = getParamId(req);
+            if (isNaN(id)) {
+                return res.status(400).json({ status: false, message: "ID invalido" });
+            }
+            const { dias, data_validade, valor } = req.body ?? {};
+            const resultado = await adminService_1.default.confirmarComprovante(id, adminId, getClientIp(req), { dias, data_validade, valor });
+            return res.json({
+                status: true,
+                message: "Comprovante confirmado e conta renovada",
+                dados: resultado
+            });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao confirmar comprovante"
+            });
+        }
+    }
+    async recusarComprovante(req, res) {
+        try {
+            const adminId = await autorizar(req, res, 'marcar_pago', "Sem permissao para recusar comprovantes");
+            if (adminId === null)
+                return res;
+            const id = getParamId(req);
+            if (isNaN(id)) {
+                return res.status(400).json({ status: false, message: "ID invalido" });
+            }
+            await adminService_1.default.recusarComprovante(id, adminId, getClientIp(req), req.body?.motivo);
+            return res.json({ status: true, message: "Comprovante recusado" });
+        }
+        catch (error) {
+            return res.status(error.status || 500).json({
+                status: false,
+                message: error.message || "Erro ao recusar comprovante"
             });
         }
     }

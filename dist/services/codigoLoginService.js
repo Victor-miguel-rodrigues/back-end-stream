@@ -9,6 +9,8 @@ exports.gerarCodigoLogin = gerarCodigoLogin;
 exports.salvarCodigoLogin = salvarCodigoLogin;
 exports.disableOfCodLogin = disableOfCodLogin;
 exports.salvarCodigoApp = salvarCodigoApp;
+exports.usarCodigoSite = usarCodigoSite;
+exports.vincularCodigoUsuario = vincularCodigoUsuario;
 const crypto_1 = __importDefault(require("crypto"));
 const connection_1 = require("../database/connection");
 const DURACAO_HORAS = 12;
@@ -142,7 +144,10 @@ async function salvarCodigoApp(deviceId, codigo) {
                 SET codigo         = EXCLUDED.codigo,
                     ativo          = TRUE,
                     data_criacao   = NOW(),
-                    data_expiracao = NOW() + INTERVAL '${DURACAO_HORAS} hours'
+                    data_expiracao = NOW() + INTERVAL '${DURACAO_HORAS} hours',
+                    usuario_id     = NULL,
+                    inserido_em    = NULL,
+                    vinculado_em   = NULL
              RETURNING codigo, data_criacao AS criado_em, data_expiracao AS expira_em`, [deviceId, codigo]);
         return result.rows[0];
     }
@@ -152,5 +157,49 @@ async function salvarCodigoApp(deviceId, codigo) {
             return 'EM_USO';
         throw error;
     }
+}
+// ---------------------------------------------------------------------------
+// Site: inserir o codigo (abre a janela de 5 min para logar) e vincular a conta
+// ---------------------------------------------------------------------------
+const JANELA_LOGIN_MIN = 5;
+// O site inseriu o codigo: confere no banco e abre os 5 minutos para a pessoa logar.
+// Inserir de novo depois de passados os 5 minutos (sem ter logado) reinicia a janela.
+async function usarCodigoSite(codigo) {
+    const upd = await (0, connection_1.query)(`UPDATE codigos_login
+         SET inserido_em = CASE
+                WHEN inserido_em IS NULL OR inserido_em < NOW() - INTERVAL '${JANELA_LOGIN_MIN} minutes'
+                THEN NOW() ELSE inserido_em END
+         WHERE codigo = $1 AND usuario_id IS NULL AND ativo = TRUE AND data_expiracao > NOW()
+         RETURNING inserido_em`, [codigo]);
+    if (upd.rows.length > 0) {
+        const inicio = new Date(upd.rows[0].inserido_em).getTime();
+        return { estado: 'OK', login_ate: new Date(inicio + JANELA_LOGIN_MIN * 60 * 1000) };
+    }
+    // Nao abriu a janela: ou o codigo nao vale mais, ou ja pertence a uma conta
+    const vinculado = await (0, connection_1.query)(`SELECT 1 FROM codigos_login
+         WHERE codigo = $1 AND usuario_id IS NOT NULL AND ativo = TRUE AND data_expiracao > NOW()`, [codigo]);
+    return vinculado.rows.length > 0 ? { estado: 'VINCULADO' } : { estado: 'INVALIDO' };
+}
+// A pessoa logou (token): liga a conta ao codigo, dentro dos 5 minutos.
+// 1 conta = 1 codigo: o codigo antigo da conta e removido. Depois de vinculado, so essa conta usa o codigo.
+async function vincularCodigoUsuario(usuarioId, codigo) {
+    return (0, connection_1.transaction)(async (client) => {
+        const sel = await client.query(`SELECT id, usuario_id,
+                    (inserido_em IS NOT NULL AND inserido_em > NOW() - INTERVAL '${JANELA_LOGIN_MIN} minutes') AS na_janela
+             FROM codigos_login
+             WHERE codigo = $1 AND ativo = TRUE AND data_expiracao > NOW()
+             FOR UPDATE`, [codigo]);
+        const linha = sel.rows[0];
+        if (!linha)
+            return 'NAO_ENCONTRADO';
+        if (linha.usuario_id !== null) {
+            return (linha.usuario_id === usuarioId ? 'OK' : 'EM_USO');
+        }
+        if (!linha.na_janela)
+            return 'TEMPO_ESGOTADO';
+        await client.query(`DELETE FROM codigos_login WHERE usuario_id = $1 AND id <> $2`, [usuarioId, linha.id]);
+        await client.query(`UPDATE codigos_login SET usuario_id = $1, vinculado_em = NOW() WHERE id = $2`, [usuarioId, linha.id]);
+        return 'OK';
+    });
 }
 //# sourceMappingURL=codigoLoginService.js.map

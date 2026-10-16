@@ -9,6 +9,7 @@ const userValidator_1 = require("../validators/userValidator");
 const auth_1 = require("../middlewares/auth");
 const rateLimit_1 = require("../middlewares/rateLimit");
 const codigoLoginController_1 = __importDefault(require("../controller/codigoLoginController"));
+const pedidoController_1 = __importDefault(require("../controller/pedidoController"));
 const router = (0, express_1.Router)();
 // Health check
 router.get('/health', (_req, res) => {
@@ -36,10 +37,14 @@ router.get('/favoritos', auth_1.validarToken, UserCadastroController_1.default.l
 router.post('/favoritos', auth_1.validarToken, UserCadastroController_1.default.adicionarFavorito);
 router.delete('/favoritos/:item_id', auth_1.validarToken, UserCadastroController_1.default.removerFavorito);
 // Codigo de login (protegidas pelo token do usuario)
+router.post('/codigo-login/usar', rateLimit_1.codigoUsarLimiter, (req, res) => codigoLoginController_1.default.usar(req, res));
+router.post('/codigo-login/vincular', auth_1.validarToken, rateLimit_1.codigoLoginLimiter, (req, res) => codigoLoginController_1.default.vincular(req, res));
 router.post('/codigo-login/app', rateLimit_1.codigoAppLimiter, (req, res) => codigoLoginController_1.default.salvarApp(req, res));
 router.post('/codigo-login', auth_1.validarToken, rateLimit_1.codigoLoginLimiter, (req, res) => codigoLoginController_1.default.gerar(req, res));
 router.get('/codigo-login', auth_1.validarToken, (req, res) => codigoLoginController_1.default.consultar(req, res));
 router.post('/codigo-login/desativar', auth_1.validarToken, (req, res) => codigoLoginController_1.default.desativar(req, res));
+// Pedido de conta (publico, limitado por IP)
+router.post('/pedidos', rateLimit_1.pedidoLimiter, (req, res) => pedidoController_1.default.criar(req, res));
 // Heartbeat
 router.post('/heartbeat', UserCadastroController_1.default.heartbeat);
 exports.default = router;

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { PoolClient } from 'pg';
-import { query } from '../database/connection';
+import { query, transaction } from '../database/connection';
 
 const DURACAO_HORAS = 12;
 const TAMANHO_CODIGO = 6;
@@ -141,12 +141,8 @@ export async function disableOfCodLogin(
 }
 
 // ---------------------------------------------------------------------------
-<<<<<<< HEAD
-// Codigo gerado pelo APP, sem login: 1 codigo por aparelho (app), guardado ate o site usar
-=======
 // Codigo gerado pelo APP, sem login: 1 codigo por aparelho (device_id) na tabela codigos_login
 // (usuario_id fica vazio ate o site vincular a conta)
->>>>>>> 94cf105 (release)
 // ---------------------------------------------------------------------------
 
 // Identificador do aparelho (o app usa um UUID guardado no celular)
@@ -162,20 +158,6 @@ export async function salvarCodigoApp(
     deviceId: string,
     codigo: string
 ): Promise<{ codigo: string; criado_em: Date; expira_em: Date } | 'EM_USO'> {
-<<<<<<< HEAD
-    // Apaga codigos vencidos (mantem a tabela pequena e libera codigos antigos)
-    await query(`DELETE FROM codigos_app WHERE expira_em <= NOW()`);
-
-    try {
-        const result = await query<{ codigo: string; criado_em: Date; expira_em: Date }>(
-            `INSERT INTO codigos_app (device_id, codigo, criado_em, expira_em)
-             VALUES ($1, $2, NOW(), NOW() + INTERVAL '${DURACAO_HORAS} hours')
-             ON CONFLICT (device_id) DO UPDATE
-                SET codigo    = EXCLUDED.codigo,
-                    criado_em = NOW(),
-                    expira_em = NOW() + INTERVAL '${DURACAO_HORAS} hours'
-             RETURNING codigo, criado_em, expira_em`,
-=======
     // Limpeza: apaga codigos de app vencidos (sem usuario) e libera este codigo se ele
     // estiver preso a outro registro ja desativado ou vencido
     await query(
@@ -194,9 +176,11 @@ export async function salvarCodigoApp(
                 SET codigo         = EXCLUDED.codigo,
                     ativo          = TRUE,
                     data_criacao   = NOW(),
-                    data_expiracao = NOW() + INTERVAL '${DURACAO_HORAS} hours'
+                    data_expiracao = NOW() + INTERVAL '${DURACAO_HORAS} hours',
+                    usuario_id     = NULL,
+                    inserido_em    = NULL,
+                    vinculado_em   = NULL
              RETURNING codigo, data_criacao AS criado_em, data_expiracao AS expira_em`,
->>>>>>> 94cf105 (release)
             [deviceId, codigo]
         );
         return result.rows[0];
@@ -205,4 +189,75 @@ export async function salvarCodigoApp(
         if (error?.code === '23505') return 'EM_USO';
         throw error;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Site: inserir o codigo (abre a janela de 5 min para logar) e vincular a conta
+// ---------------------------------------------------------------------------
+const JANELA_LOGIN_MIN = 5;
+
+export type ResultadoUsar =
+    | { estado: 'OK'; login_ate: Date }
+    | { estado: 'INVALIDO' }
+    | { estado: 'VINCULADO' };
+
+// O site inseriu o codigo: confere no banco e abre os 5 minutos para a pessoa logar.
+// Inserir de novo depois de passados os 5 minutos (sem ter logado) reinicia a janela.
+export async function usarCodigoSite(codigo: string): Promise<ResultadoUsar> {
+    const upd = await query<{ inserido_em: Date }>(
+        `UPDATE codigos_login
+         SET inserido_em = CASE
+                WHEN inserido_em IS NULL OR inserido_em < NOW() - INTERVAL '${JANELA_LOGIN_MIN} minutes'
+                THEN NOW() ELSE inserido_em END
+         WHERE codigo = $1 AND usuario_id IS NULL AND ativo = TRUE AND data_expiracao > NOW()
+         RETURNING inserido_em`,
+        [codigo]
+    );
+
+    if (upd.rows.length > 0) {
+        const inicio = new Date(upd.rows[0].inserido_em).getTime();
+        return { estado: 'OK', login_ate: new Date(inicio + JANELA_LOGIN_MIN * 60 * 1000) };
+    }
+
+    // Nao abriu a janela: ou o codigo nao vale mais, ou ja pertence a uma conta
+    const vinculado = await query(
+        `SELECT 1 FROM codigos_login
+         WHERE codigo = $1 AND usuario_id IS NOT NULL AND ativo = TRUE AND data_expiracao > NOW()`,
+        [codigo]
+    );
+    return vinculado.rows.length > 0 ? { estado: 'VINCULADO' } : { estado: 'INVALIDO' };
+}
+
+export type ResultadoVincular = 'OK' | 'NAO_ENCONTRADO' | 'TEMPO_ESGOTADO' | 'EM_USO';
+
+// A pessoa logou (token): liga a conta ao codigo, dentro dos 5 minutos.
+// 1 conta = 1 codigo: o codigo antigo da conta e removido. Depois de vinculado, so essa conta usa o codigo.
+export async function vincularCodigoUsuario(
+    usuarioId: number,
+    codigo: string
+): Promise<ResultadoVincular> {
+    return transaction(async (client) => {
+        const sel = await client.query(
+            `SELECT id, usuario_id,
+                    (inserido_em IS NOT NULL AND inserido_em > NOW() - INTERVAL '${JANELA_LOGIN_MIN} minutes') AS na_janela
+             FROM codigos_login
+             WHERE codigo = $1 AND ativo = TRUE AND data_expiracao > NOW()
+             FOR UPDATE`,
+            [codigo]
+        );
+
+        const linha = sel.rows[0];
+        if (!linha) return 'NAO_ENCONTRADO' as ResultadoVincular;
+        if (linha.usuario_id !== null) {
+            return (linha.usuario_id === usuarioId ? 'OK' : 'EM_USO') as ResultadoVincular;
+        }
+        if (!linha.na_janela) return 'TEMPO_ESGOTADO' as ResultadoVincular;
+
+        await client.query(`DELETE FROM codigos_login WHERE usuario_id = $1 AND id <> $2`, [usuarioId, linha.id]);
+        await client.query(
+            `UPDATE codigos_login SET usuario_id = $1, vinculado_em = NOW() WHERE id = $2`,
+            [usuarioId, linha.id]
+        );
+        return 'OK' as ResultadoVincular;
+    });
 }

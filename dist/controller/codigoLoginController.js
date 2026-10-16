@@ -9,6 +9,60 @@ const registrarLog = (usuarioId, perfilId, acao, descricao, ip) => {
          VALUES ($1, $2, $3, $4, $5)`, [usuarioId, perfilId, acao, descricao, ip ?? '0.0.0.0']).catch(err => console.error('[codigoLogin] Erro ao registrar log:', err));
 };
 class CodigoLoginController {
+    // POST /codigo-login/usar  -> o SITE insere o codigo: valida no banco e abre os 5 minutos para logar
+    async usar(req, res) {
+        try {
+            const codigo = (0, codigoLoginService_1.normalizarCodigoExterno)(req.body?.codigo);
+            if (!codigo) {
+                return res.status(400).json({ status: false, message: 'Codigo invalido. Use 6 letras ou numeros' });
+            }
+            const r = await (0, codigoLoginService_1.usarCodigoSite)(codigo);
+            if (r.estado === 'INVALIDO') {
+                return res.status(404).json({ status: false, codigo: 'CODIGO_INVALIDO', message: 'Codigo invalido ou expirado' });
+            }
+            if (r.estado === 'VINCULADO') {
+                return res.status(409).json({ status: false, codigo: 'CODIGO_VINCULADO', message: 'Codigo ja esta vinculado a uma conta' });
+            }
+            return res.json({
+                status: true,
+                message: 'Codigo valido. Voce tem 5 minutos para entrar na sua conta',
+                dados: { login_ate: r.login_ate }
+            });
+        }
+        catch (error) {
+            console.error('[codigoLogin.usar] Erro:', error);
+            return res.status(500).json({ status: false, message: 'Erro ao validar codigo' });
+        }
+    }
+    // POST /codigo-login/vincular  -> com o token do usuario logado: liga a conta ao codigo (1 conta = 1 codigo)
+    async vincular(req, res) {
+        try {
+            const usuario = req.usuario;
+            if (!usuario) {
+                return res.status(401).json({ status: false, message: 'Usuario nao autenticado' });
+            }
+            const codigo = (0, codigoLoginService_1.normalizarCodigoExterno)(req.body?.codigo);
+            if (!codigo) {
+                return res.status(400).json({ status: false, message: 'Codigo invalido. Use 6 letras ou numeros' });
+            }
+            const r = await (0, codigoLoginService_1.vincularCodigoUsuario)(usuario.id, codigo);
+            if (r === 'NAO_ENCONTRADO') {
+                return res.status(404).json({ status: false, codigo: 'CODIGO_INVALIDO', message: 'Codigo invalido ou expirado' });
+            }
+            if (r === 'TEMPO_ESGOTADO') {
+                return res.status(410).json({ status: false, codigo: 'TEMPO_ESGOTADO', message: 'O tempo de 5 minutos para entrar na conta acabou. Insira o codigo de novo' });
+            }
+            if (r === 'EM_USO') {
+                return res.status(409).json({ status: false, codigo: 'CODIGO_VINCULADO', message: 'Codigo ja esta vinculado a outra conta' });
+            }
+            registrarLog(usuario.id, usuario.perfil_id, 'codigo_login_vinculado', 'Conta vinculada ao codigo de login', req.ip);
+            return res.json({ status: true, message: 'Conta vinculada ao codigo' });
+        }
+        catch (error) {
+            console.error('[codigoLogin.vincular] Erro:', error);
+            return res.status(500).json({ status: false, message: 'Erro ao vincular codigo' });
+        }
+    }
     // POST /codigo-login/app  -> o APP guarda o codigo que gerou (sem login; 1 codigo por aparelho)
     async salvarApp(req, res) {
         try {

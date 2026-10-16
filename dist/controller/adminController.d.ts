@@ -23,6 +23,19 @@ export declare class AdminController {
     revogarSessao(req: Request, res: Response): Promise<Response>;
     revogarSessoesAdmin(req: Request, res: Response): Promise<Response>;
     limparSessoesInativasAdmin(req: Request, res: Response): Promise<Response>;
+    renovarUsuario(req: Request, res: Response): Promise<Response>;
+    listarPagamentos(req: Request, res: Response): Promise<Response>;
+    resumoPagamentos(req: Request, res: Response): Promise<Response>;
+    bloquearUsuario(req: Request, res: Response): Promise<Response>;
+    desbloquearUsuario(req: Request, res: Response): Promise<Response>;
+    listarSessoesUsuario(req: Request, res: Response): Promise<Response>;
+    deslogarUsuario(req: Request, res: Response): Promise<Response>;
+    listarIpsSuspeitos(req: Request, res: Response): Promise<Response>;
+    enviarComprovante(req: Request, res: Response): Promise<Response>;
+    listarComprovantes(req: Request, res: Response): Promise<Response>;
+    imagemComprovante(req: Request, res: Response): Promise<Response>;
+    confirmarComprovante(req: Request, res: Response): Promise<Response>;
+    recusarComprovante(req: Request, res: Response): Promise<Response>;
 }
 declare const _default: AdminController;
 export default _default;

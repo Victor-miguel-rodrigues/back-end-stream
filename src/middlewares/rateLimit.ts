@@ -56,15 +56,9 @@ export const codigoLoginLimiter = rateLimit({
     keyGenerator: codigoLoginKeyGenerator
 });
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter };
-=======
-=======
->>>>>>> 94cf105 (release)
 // Rota PUBLICA do app (sem login): 6 por minuto por aparelho (device_id). Sem device_id valido, por IP.
 const codigoAppKeyGenerator = (req: Request): string => {
-    const id = (req as any).body?.device_id;
+    const id = (req.body as any)?.device_id;
     if (typeof id === 'string' && /^[A-Za-z0-9._-]{8,80}$/.test(id)) return `d:${id}`;
     return `ip:${ipKeyGenerator((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0') as string)}`;
 };
@@ -78,9 +72,32 @@ export const codigoAppLimiter = rateLimit({
     keyGenerator: codigoAppKeyGenerator
 });
 
-<<<<<<< HEAD
-export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter, codigoAppLimiter };
->>>>>>> 9e7a2b4 (rebase)
-=======
-export default { loginLimiter, apiLimiter, sensitiveLimiter, codigoLoginLimiter, codigoAppLimiter };
->>>>>>> 94cf105 (release)
+// Rota PUBLICA do site (inserir codigo): 10 por minuto por IP, para barrar tentativa de adivinhar codigos.
+export const codigoUsarLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { mensagem: 'Muitas tentativas. Aguarde 1 minuto.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request): string =>
+        ipKeyGenerator((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0') as string)
+});
+
+// Pedido de conta (publico): 3 por hora por IP — evita lotar a tabela de pedidos
+export const pedidoLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    message: { status: false, message: 'Muitas solicitacoes. Tente novamente mais tarde.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+export default {
+    loginLimiter,
+    apiLimiter,
+    sensitiveLimiter,
+    codigoLoginLimiter,
+    codigoAppLimiter,
+    codigoUsarLimiter,
+    pedidoLimiter
+};

@@ -33,11 +33,12 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.codigoAppLimiter = exports.codigoLoginLimiter = exports.sensitiveLimiter = exports.apiLimiter = exports.loginLimiter = void 0;
+exports.pedidoLimiter = exports.codigoUsarLimiter = exports.codigoAppLimiter = exports.codigoLoginLimiter = exports.sensitiveLimiter = exports.apiLimiter = exports.loginLimiter = void 0;
 const express_rate_limit_1 = __importStar(require("express-rate-limit"));
 // Chave por IP + email para evitar bypass com emails diferentes
 const loginKeyGenerator = (req) => {
-    const ip = (req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0');
+    // ipKeyGenerator agrupa enderecos IPv6 por sub-rede (evita burlar o limite trocando de IPv6)
+    const ip = (0, express_rate_limit_1.ipKeyGenerator)((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0'));
     const email = (req.body?.email ?? 'unknown');
     return `${ip}-${email}`;
 };
@@ -99,5 +100,30 @@ exports.codigoAppLimiter = (0, express_rate_limit_1.default)({
     legacyHeaders: false,
     keyGenerator: codigoAppKeyGenerator
 });
-exports.default = { loginLimiter: exports.loginLimiter, apiLimiter: exports.apiLimiter, sensitiveLimiter: exports.sensitiveLimiter, codigoLoginLimiter: exports.codigoLoginLimiter, codigoAppLimiter: exports.codigoAppLimiter };
+// Rota PUBLICA do site (inserir codigo): 10 por minuto por IP, para barrar tentativa de adivinhar codigos.
+exports.codigoUsarLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: { mensagem: 'Muitas tentativas. Aguarde 1 minuto.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => (0, express_rate_limit_1.ipKeyGenerator)((req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0'))
+});
+// Pedido de conta (publico): 3 por hora por IP — evita lotar a tabela de pedidos
+exports.pedidoLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    message: { status: false, message: 'Muitas solicitacoes. Tente novamente mais tarde.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+exports.default = {
+    loginLimiter: exports.loginLimiter,
+    apiLimiter: exports.apiLimiter,
+    sensitiveLimiter: exports.sensitiveLimiter,
+    codigoLoginLimiter: exports.codigoLoginLimiter,
+    codigoAppLimiter: exports.codigoAppLimiter,
+    codigoUsarLimiter: exports.codigoUsarLimiter,
+    pedidoLimiter: exports.pedidoLimiter
+};
 //# sourceMappingURL=rateLimit.js.map

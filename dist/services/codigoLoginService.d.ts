@@ -19,4 +19,15 @@ export declare function salvarCodigoApp(deviceId: string, codigo: string): Promi
     criado_em: Date;
     expira_em: Date;
 } | 'EM_USO'>;
+export type ResultadoUsar = {
+    estado: 'OK';
+    login_ate: Date;
+} | {
+    estado: 'INVALIDO';
+} | {
+    estado: 'VINCULADO';
+};
+export declare function usarCodigoSite(codigo: string): Promise<ResultadoUsar>;
+export type ResultadoVincular = 'OK' | 'NAO_ENCONTRADO' | 'TEMPO_ESGOTADO' | 'EM_USO';
+export declare function vincularCodigoUsuario(usuarioId: number, codigo: string): Promise<ResultadoVincular>;
 //# sourceMappingURL=codigoLoginService.d.ts.map
